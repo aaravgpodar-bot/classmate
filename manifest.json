@@ -1,0 +1,16 @@
+{
+  "name": "ClassMate",
+  "short_name": "ClassMate",
+  "description": "A student-first planner for timetables, reminders, groups, library returns, and assignments.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f7fbf8",
+  "theme_color": "#2f6f73",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%232f6f73'/%3E%3Cpath d='M27 35c13-9 27-9 37 0 10-9 24-9 37 0v58c-13-7-27-7-37 1-10-8-24-8-37-1V35Z' fill='%23f6f0d8'/%3E%3Cpath d='M64 35v59' stroke='%232f6f73' stroke-width='5'/%3E%3C/svg%3E",
+      "sizes": "128x128",
+      "type": "image/svg+xml"
+    }
+  ]
+}
