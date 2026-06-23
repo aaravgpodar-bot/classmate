@@ -153,29 +153,22 @@ function onboarding() {
     <main class="hero">
       <section class="hero-copy">
         <div class="brand"><div class="logo">CM</div><div><h1>ClassMate</h1><p>Your school day, remembered.</p></div></div>
-        <h1>Plan school without the panic.</h1>
-        <p>Timetable, reminders, library returns, groups, and AI games in one bright student dashboard.</p>
+        <h1>School, sorted.</h1>
+        <p>Plan your day, remember homework, track books, and get study help from one student dashboard.</p>
         <div class="actions">
           <div id="googleSignIn" class="google-signin"></div>
           <button class="btn primary" data-action="google-sign-in">Continue with Google</button>
           <button class="btn" data-action="finish-onboarding">Try without signing in</button>
-          <button class="btn" data-action="choose-timetable-photo">Upload timetable photo</button>
         </div>
-        <p class="muted light">Fresh start: no default accounts, contacts, books, groups, or reminders are preloaded.</p>
+        <p class="muted light">No default accounts, contacts, books, groups, or reminders.</p>
       </section>
       <section class="hero-card">
-        <div class="panel">
-          <h3>Photo-first setup</h3>
-          <div class="setup-steps">
-            <div><strong>Upload timetable</strong><br><span class="muted">AI extraction after backend setup.</span></div>
-            <div><strong>Review first</strong><br><span class="muted">Nothing activates until confirmed.</span></div>
-            <div><strong>Map materials</strong><br><span class="muted">Pack lists stay subject-based.</span></div>
-            <div><strong>Open dashboard</strong><br><span class="muted">Personal, groups, and library together.</span></div>
-          </div>
-        </div>
-        <div class="panel">
-          <h3>Your timetable preview</h3>
-          ${timetablePreview()}
+        <div class="start-preview">
+          <div class="preview-top"><span class="chip gold">Today</span><strong>Ready when you are</strong></div>
+          <div class="preview-row"><span>Homework</span><strong>0 due</strong></div>
+          <div class="preview-row"><span>Schedule</span><strong>Whole day</strong></div>
+          <div class="preview-row"><span>Library</span><strong>0 books</strong></div>
+          <button class="btn primary" data-action="finish-onboarding">Open ClassMate</button>
         </div>
       </section>
     </main>
