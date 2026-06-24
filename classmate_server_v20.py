@@ -14,16 +14,19 @@ PUBLIC_FILES = {
     "app.js",
     "app.v18.js",
     "app.v19.js",
+    "app.v20.js",
     "app.v13.js",
     "index.html",
     "index.v18.html",
     "index.v19.html",
+    "index.v20.html",
     "manifest.json",
     "service-worker.js",
     "styles.final.css",
     "styles.css",
     "styles.v18.css",
     "styles.v19.css",
+    "styles.v20.css",
     "styles.v13.css",
 }
 
@@ -117,6 +120,9 @@ def static_files(filename):
     if filename not in PUBLIC_FILES:
         return jsonify({"error": "not found"}), 404
     return send_from_directory(BASE_DIR, filename)
+
+
+app.view_functions["index"] = lambda: send_from_directory(BASE_DIR, "index.v20.html")
 
 
 def verify_google_credential(credential, client_id):

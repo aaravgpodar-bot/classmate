@@ -157,8 +157,8 @@ function onboarding() {
         <p>Plan your day, remember homework, track books, and get study help from one student dashboard.</p>
         <div class="actions">
           <div id="googleSignIn" class="google-signin"></div>
-          <button class="btn primary" data-action="google-sign-in">Continue with Google</button>
-          <button class="btn" data-action="finish-onboarding">Try without signing in</button>
+          <button id="googleFallback" class="btn primary" data-action="google-sign-in">Continue with Google</button>
+          <button class="btn quiet" data-action="finish-onboarding">Try without signing in</button>
         </div>
         <p class="muted light">No default accounts, contacts, books, groups, or reminders.</p>
       </section>
@@ -168,7 +168,6 @@ function onboarding() {
           <div class="preview-row"><span>Homework</span><strong>0 due</strong></div>
           <div class="preview-row"><span>Schedule</span><strong>Whole day</strong></div>
           <div class="preview-row"><span>Library</span><strong>0 books</strong></div>
-          <button class="btn primary" data-action="finish-onboarding">Open ClassMate</button>
         </div>
       </section>
     </main>
@@ -196,7 +195,7 @@ function shell() {
       <main class="main">
         ${viewContent()}
       </main>
-      <nav class="bottom-nav">${tabs.slice(0, 5).map(tabButton).join("")}</nav>
+      <nav class="bottom-nav">${tabs.map(tabButton).join("")}</nav>
     </div>
     ${!state.tutorialDone ? tutorialModal() : ""}
     ${draftReminder ? reminderModal() : ""}
@@ -714,12 +713,14 @@ async function loadGoogleConfig() {
 
 async function mountGoogleSignIn() {
   const target = document.querySelector("#googleSignIn");
+  const fallback = document.querySelector("#googleFallback");
   if (!target || state.auth?.signedIn) return;
   const clientId = await loadGoogleConfig();
   if (!clientId || !window.google?.accounts?.id) {
-    target.innerHTML = `<span class="auth-note">Google sign-in is ready for an OAuth client ID.</span>`;
+    target.innerHTML = "";
     return;
   }
+  if (fallback) fallback.style.display = "none";
   google.accounts.id.initialize({
     client_id: clientId,
     callback: handleGoogleCredential

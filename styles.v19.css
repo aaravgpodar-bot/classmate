@@ -193,6 +193,13 @@ button {
   color: #8b3324;
 }
 
+.btn.quiet {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  box-shadow: none;
+}
+
 .btn.ghost {
   background: transparent;
 }
@@ -769,9 +776,9 @@ button {
     right: 0;
     bottom: 0;
     z-index: 9;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    display: flex;
     gap: 4px;
+    overflow-x: auto;
     padding: 8px;
     border-top: 1px solid var(--line);
     background: rgba(255, 255, 255, 0.96);
@@ -779,6 +786,8 @@ button {
   }
 
   .bottom-nav button {
+    flex: 0 0 auto;
+    min-width: 78px;
     min-height: 48px;
     border: 0;
     border-radius: 8px;
