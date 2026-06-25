@@ -1,10 +1,10 @@
-const CACHE_NAME = "classmate-v22-clean-remake";
+const CACHE_NAME = "classmate-clean";
 const APP_SHELL = [
   "/",
-  "/index.v22.html",
-  "/styles.v22.css",
-  "/app.v22.js",
-  "/manifest.v22.json"
+  "/index.html",
+  "/styles.css",
+  "/app.js",
+  "/manifest.json"
 ];
 
 self.addEventListener("install", (event) => {
