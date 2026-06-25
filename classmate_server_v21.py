@@ -127,6 +127,9 @@ def static_files(filename):
     return send_from_directory(BASE_DIR, filename)
 
 
+app.view_functions["index"] = lambda: send_from_directory(BASE_DIR, "index.v21.html")
+
+
 def verify_google_credential(credential, client_id):
     url = "https://oauth2.googleapis.com/tokeninfo?id_token=" + urllib.parse.quote(credential)
     try:
