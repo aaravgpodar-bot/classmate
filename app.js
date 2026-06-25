@@ -1543,7 +1543,7 @@ function setupInstallAndOffline() {
   });
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/service-worker.v22.js").catch(() => {
+      navigator.serviceWorker.register("/service-worker.js").catch(() => {
         state.install = { ...(state.install || {}), message: "Offline install setup could not finish in this browser." };
         save();
       });

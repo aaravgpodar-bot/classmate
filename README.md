@@ -16,16 +16,10 @@ Then open:
 http://127.0.0.1:5177/
 ```
 
-In this Codex workspace, the bundled Python runtime can also serve it:
-
-```powershell
-& "C:\Users\Aarav\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m http.server 5177
-```
-
 Or run the local AI server:
 
 ```powershell
-& "C:\Users\Aarav\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" local_ai_server.py
+python local_ai_server.py
 ```
 
 Set `OPENAI_API_KEY` before running. Without it, ClassQuest will not generate questions.

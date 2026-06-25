@@ -10,34 +10,11 @@ from flask import Flask, jsonify, request, send_from_directory
 
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_FILES = {
-    "app.final.js",
     "app.js",
-    "app.v18.js",
-    "app.v19.js",
-    "app.v20.js",
-    "app.v21.js",
-    "app.v22.js",
-    "app.v13.js",
     "index.html",
-    "index.v18.html",
-    "index.v19.html",
-    "index.v20.html",
-    "index.v21.html",
-    "index.v22.html",
     "manifest.json",
-    "manifest.v21.json",
-    "manifest.v22.json",
     "service-worker.js",
-    "service-worker.v21.js",
-    "service-worker.v22.js",
-    "styles.final.css",
     "styles.css",
-    "styles.v18.css",
-    "styles.v19.css",
-    "styles.v20.css",
-    "styles.v21.css",
-    "styles.v22.css",
-    "styles.v13.css",
 }
 
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
