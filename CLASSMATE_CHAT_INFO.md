@@ -128,6 +128,13 @@ Earlier live checks:
 
 ## Known Setup Items
 
+- V22 remake:
+  - Uses `classmate.prototype.v22.clean-remake` as the only active local storage key.
+  - Removes older `classmate.*` localStorage keys on load, including the previous Google/global prototype state.
+  - Starts with no signed-in account, no default contacts, and no saved demo workspace.
+  - First screen is simplified around Student with Google, Teacher with Google, and Guest workspace.
+  - Sidebar navigation is grouped into Today, School, Create, and App.
+  - PWA files now use v22 assets: `app.v22.js`, `styles.v22.css`, `manifest.v22.json`, and `service-worker.v22.js`.
 - Google login is wired but not fully active until `GOOGLE_CLIENT_ID` is added to PythonAnywhere.
 - The OpenAI API key was pasted in chat earlier and should be rotated later for safety. Do not store or repeat the key in project docs.
 - The app is currently a localStorage/prototype-style frontend with Flask AI endpoints, not a full production database app yet.
