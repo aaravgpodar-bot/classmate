@@ -1,6 +1,6 @@
 # ClassMate Prototype
 
-ClassMate is a student-first AI planner prototype. This first build is a PWA-style app with local browser state and an AI-backed ClassQuest game endpoint.
+ClassMate is a student-first AI planner prototype. This build is a PWA-style app with local browser state, Flask-backed cloud workspace sync, and AI-backed study endpoints.
 
 ## Run
 
@@ -27,6 +27,10 @@ Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, present
 ## Included
 
 - PWA manifest and service worker.
+- Server-side cloud workspace sync using SQLite.
+  - Signed-in Google users sync by email workspace.
+  - Guest users sync to a generated device workspace id.
+  - Set `CLASSMATE_DATA_DIR` in production to keep the SQLite database in persistent storage.
 - First-run onboarding with no default contacts, groups, reminders, books, or projects.
 - Timetable photo upload with OpenAI Vision extraction for full-week school, homework, activity, travel, or study blocks.
 - Dashboard with most-recent/urgent focus.
@@ -53,12 +57,12 @@ Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, present
 
 ## Next Build Step
 
-The next practical step is to connect these flows to a real app stack:
+The next practical step is to move the prototype cloud sync into a production app stack:
 
 - Next.js or React frontend if we want component structure and routing.
-- Supabase for auth, database, and realtime chat.
+- Supabase for auth, database, file storage, and realtime chat.
 - OpenAI API for timetable extraction and reminder parsing.
-- Supabase or another backend database for real shared accounts, files, groups, and classroom sync.
+- Server-side permissions for real shared accounts, files, groups, and classroom sync.
 
 ## PythonAnywhere
 
@@ -83,8 +87,9 @@ cd ~/classmate
 pip install --user -r requirements.txt
 ```
 
-7. For real AI game generation, set `OPENAI_API_KEY` in the PythonAnywhere web app environment or WSGI config.
-8. Reload the web app from the PythonAnywhere **Web** tab.
+7. For cloud sync data persistence, set `CLASSMATE_DATA_DIR=/home/AaravG13/classmate_data` or another persistent folder.
+8. For real AI game generation, set `OPENAI_API_KEY` in the PythonAnywhere web app environment or WSGI config.
+9. Reload the web app from the PythonAnywhere **Web** tab.
 
 For a permanent free link, PythonAnywhere should become the main URL. Cloudflare quick tunnels are temporary and can expire. PythonAnywhere is the permanent free deployment path for this prototype because ClassQuest needs a backend endpoint for OpenAI.
 

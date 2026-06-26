@@ -1,4 +1,5 @@
 const STORAGE_KEY = "classmate.prototype.v23.final-remake";
+const DEVICE_WORKSPACE_KEY = "classmate.device.workspace";
 const OLD_STORAGE_KEYS = [
   "classmate.prototype.v1",
   "classmate.prototype.v2.fresh",
@@ -21,6 +22,7 @@ const seed = {
   tutorialDone: false,
   auth: { signedIn: false, email: "", picture: "", provider: "", role: "student" },
   install: { ready: false, installed: false, message: "" },
+  sync: { status: "loading", message: "Preparing cloud sync..." },
   version: "v23-final-remake",
   view: "dashboard",
   dashboardMode: "time",
@@ -103,6 +105,9 @@ let installPromptEvent = null;
 let pendingAuthRole = "student";
 let pendingFocusSelector = "";
 let gameTimerId = null;
+let cloudSaveTimer = null;
+let cloudLoadStarted = false;
+let cloudReady = false;
 
 function load() {
   try {
@@ -130,6 +135,7 @@ function normalizeState(saved) {
     version: seed.version,
     auth: { ...base.auth, ...(saved.auth || {}) },
     install: { ...base.install, ...(saved.install || {}) },
+    sync: { ...base.sync, ...(saved.sync || {}) },
     user: { ...base.user, ...(saved.user || {}) },
     timetableUpload: { ...base.timetableUpload, ...(saved.timetableUpload || {}) },
     presentationAi: { ...base.presentationAi, ...(saved.presentationAi || {}) },
@@ -139,8 +145,97 @@ function normalizeState(saved) {
   };
 }
 
+function getDeviceWorkspaceId() {
+  let id = localStorage.getItem(DEVICE_WORKSPACE_KEY);
+  if (!id) {
+    id = `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(DEVICE_WORKSPACE_KEY, id);
+  }
+  return id;
+}
+
+function workspaceId() {
+  const email = state.auth?.signedIn && state.auth?.email ? state.auth.email.toLowerCase() : "";
+  return email ? `google:${email}` : getDeviceWorkspaceId();
+}
+
+function cloudSafeState() {
+  const copy = structuredClone(state);
+  copy.sync = { ...(copy.sync || {}), status: "saved" };
+  copy.timetableUpload = { ...seed.timetableUpload, ...(copy.timetableUpload || {}), result: null };
+  copy.games = { ...(copy.games || {}), roundDeadline: 0 };
+  return copy;
+}
+
+async function initCloudSync() {
+  if (cloudLoadStarted) return;
+  cloudLoadStarted = true;
+  await loadCloudWorkspace();
+}
+
+async function loadCloudWorkspace() {
+  const id = workspaceId();
+  try {
+    const response = await fetch(`/api/workspace/${encodeURIComponent(id)}`);
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.state) {
+      state = normalizeState({ ...data.state, sync: { status: "saved", message: "Loaded from cloud." } });
+      saveLocalOnly();
+      cloudReady = true;
+      render();
+      return;
+    }
+    cloudReady = true;
+    state.sync = { status: "saved", message: "New cloud workspace ready." };
+    save();
+    render();
+  } catch {
+    cloudReady = false;
+    state.sync = { status: "error", message: "Cloud sync is offline on this device." };
+    saveLocalOnly();
+    render();
+  }
+}
+
+function saveLocalOnly() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function queueCloudSave() {
+  if (!cloudReady) return;
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(() => {
+    saveCloudWorkspace();
+  }, 650);
+}
+
+async function saveCloudWorkspace() {
+  const id = workspaceId();
+  const previousSync = state.sync || {};
+  state.sync = { status: "saving", message: "Saving workspace to cloud..." };
+  saveLocalOnly();
+  try {
+    const response = await fetch(`/api/workspace/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: cloudSafeState() })
+    });
+    if (!response.ok) throw new Error("Cloud save failed.");
+    state.sync = { status: "saved", message: state.auth?.signedIn ? "Saved to your Google workspace." : "Saved to this device workspace." };
+  } catch {
+    state.sync = { status: "error", message: "Could not save to cloud. Local copy is still saved." };
+  }
+  if (JSON.stringify(previousSync) !== JSON.stringify(state.sync)) {
+    saveLocalOnly();
+    render();
+  } else {
+    saveLocalOnly();
+  }
+}
+
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  queueCloudSave();
 }
 
 function setState(patch) {
@@ -383,11 +478,21 @@ function appNotice() {
   return `<div class="app-notice" role="status"><span>${escapeHtml(message)}</span><button class="btn compact-btn" data-action="clear-notice">Dismiss</button></div>`;
 }
 
+function cloudStatusMarkup() {
+  const sync = state.sync || {};
+  const label = sync.status === "saved" ? "Cloud saved"
+    : sync.status === "saving" ? "Saving..."
+      : sync.status === "error" ? "Cloud paused"
+        : "Cloud sync";
+  const detail = sync.message || (state.auth?.signedIn ? "Signed-in workspace" : "Device workspace");
+  return `<span class="chip ${sync.status === "error" ? "coral" : "green"}" title="${escapeHtml(detail)}">${label}</span>`;
+}
+
 function header(title, subtitle, buttons = "") {
   return `
     <div class="topbar">
       <div><h2>${title}</h2><p>${subtitle}</p></div>
-      <div class="actions">${buttons}</div>
+      <div class="actions">${cloudStatusMarkup()}${buttons}</div>
     </div>
   `;
 }
@@ -1030,8 +1135,10 @@ async function handleGoogleCredential(response) {
     state.user = { ...state.user, name: data.user.name || "Student" };
     state.onboarded = true;
     state.view = state.auth.role === "teacher" ? "classrooms" : "dashboard";
-    save();
-    render();
+    saveLocalOnly();
+    cloudLoadStarted = false;
+    cloudReady = false;
+    await loadCloudWorkspace();
   } catch (error) {
     alert(error.message || "Google sign-in could not finish.");
   }
@@ -1765,16 +1872,31 @@ async function handle(action, id) {
   }
   if (action === "sign-out") {
     state.auth = { ...seed.auth, provider: "Guest", role: state.auth?.role || "student" };
-    save();
-    render();
+    cloudLoadStarted = false;
+    cloudReady = false;
+    saveLocalOnly();
+    await loadCloudWorkspace();
   }
   if (action === "test-notification") testNotification();
   if (action === "reset") {
+    await deleteCloudWorkspace();
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(DEVICE_WORKSPACE_KEY);
     clearOldClassMateStorage();
     state = structuredClone(seed);
+    cloudLoadStarted = false;
+    cloudReady = false;
     draftReminder = null;
     render();
+    await loadCloudWorkspace();
+  }
+}
+
+async function deleteCloudWorkspace() {
+  try {
+    await fetch(`/api/workspace/${encodeURIComponent(workspaceId())}`, { method: "DELETE" });
+  } catch {
+    // Local reset should still work if the network is unavailable.
   }
 }
 
@@ -1955,3 +2077,4 @@ function setupInstallAndOffline() {
 
 setupInstallAndOffline();
 render();
+initCloudSync();

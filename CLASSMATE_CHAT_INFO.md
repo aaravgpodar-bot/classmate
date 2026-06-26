@@ -51,6 +51,12 @@ PythonAnywhere account `AaravG13`, app folder `/home/AaravG13/classmate`, WSGI f
   - Backend exposes `/api/config` and `/api/google-login`.
   - Login verifies Google ID tokens through Google tokeninfo.
   - `GOOGLE_CLIENT_ID` still needs to be configured on PythonAnywhere before real Google login works.
+- Cloud sync:
+  - Backend exposes `/api/workspace/<workspace_id>` GET/POST/DELETE.
+  - Workspace data is stored in SQLite under `CLASSMATE_DATA_DIR` or local `data/`.
+  - Google users sync by email workspace after sign-in.
+  - Guest users sync by generated device workspace id.
+  - Local browser storage remains a fast/offline copy.
 - Timetable:
   - Photo upload route using OpenAI Vision endpoint.
   - Whole-day schedule blocks for school, homework, activity, sport, meal, travel, and other.
@@ -110,6 +116,8 @@ Recent local checks:
 - `python -m py_compile server.py local_ai_server.py pythonanywhere_wsgi.py` passed.
 - `python -m json.tool manifest.json` passed.
 - Flask `/api/export-assignment` produced real `.pptx` and `.docx` files after installing `requirements.txt` locally.
+- Flask `/api/workspace` saved, loaded, and deleted test workspace data.
+- Browser-created workspace row appeared in local SQLite with a saved library book.
 - Desktop fresh-start check:
   - Canonical JS/CSS loaded on a fresh local port to avoid old service-worker cache.
   - "School, sorted." visible.
@@ -147,7 +155,8 @@ Earlier live checks:
   - PWA files use canonical assets: `app.js`, `styles.css`, `manifest.json`, and `service-worker.js`.
 - Google login is wired but not fully active until `GOOGLE_CLIENT_ID` is added to PythonAnywhere.
 - The OpenAI API key was pasted in chat earlier and should be rotated later for safety. Do not store or repeat the key in project docs.
-- The app is currently a localStorage/prototype-style frontend with Flask AI endpoints, not a full production database app yet.
+- The app now has prototype cloud sync using Flask + SQLite. Supabase is still the production-grade next step for auth/database/files/realtime.
+- Set `CLASSMATE_DATA_DIR` on PythonAnywhere to a persistent folder before relying on cloud sync there.
 - PythonAnywhere deployment should upload/pull canonical files only. Do not recreate old version-suffix assets.
 - Old service-worker state in a browser may request old cached files during local testing. The current canonical HTML registers `service-worker.js`.
 - GitHub collaborator invitations were previously sent for `ashishefe` and `keshavatearth`; acceptance status may need checking in GitHub.
@@ -155,8 +164,8 @@ Earlier live checks:
 
 ## Good Next Steps
 
-- Add a real database/auth layer after Google OAuth is configured.
-- Add real persistent user accounts and cloud sync.
+- Move prototype SQLite cloud sync to Supabase after Google OAuth is configured.
+- Add real server-side permissions for shared groups/classrooms/files.
 - Add proper file storage for documents instead of local file-name tracking.
 - Install `python-pptx` and `python-docx` from `requirements.txt` on PythonAnywhere for real export downloads.
 - Add production notification scheduling for morning/evening reminders.

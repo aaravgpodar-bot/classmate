@@ -2,6 +2,7 @@ import json
 import io
 import os
 import re
+import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,6 +12,8 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 
 BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = Path(os.environ.get("CLASSMATE_DATA_DIR", BASE_DIR / "data"))
+DB_PATH = DATA_DIR / "classmate.sqlite3"
 PUBLIC_FILES = {
     "app.js",
     "index.html",
@@ -20,6 +23,7 @@ PUBLIC_FILES = {
 }
 
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/")
@@ -51,6 +55,38 @@ def google_login():
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 401
     return jsonify({"user": user})
+
+
+@app.get("/api/workspace/<workspace_id>")
+def get_workspace(workspace_id):
+    workspace_id = clean_workspace_id(workspace_id)
+    if not workspace_id:
+        return jsonify({"error": "Workspace id is required."}), 400
+    saved = load_workspace(workspace_id)
+    return jsonify({"workspaceId": workspace_id, "state": saved})
+
+
+@app.post("/api/workspace/<workspace_id>")
+def save_workspace(workspace_id):
+    workspace_id = clean_workspace_id(workspace_id)
+    if not workspace_id:
+        return jsonify({"error": "Workspace id is required."}), 400
+    body = request.get_json(silent=True) or {}
+    state = body.get("state", {})
+    if not isinstance(state, dict):
+        return jsonify({"error": "Workspace state must be an object."}), 400
+    save_workspace_state(workspace_id, state)
+    return jsonify({"workspaceId": workspace_id, "saved": True})
+
+
+@app.delete("/api/workspace/<workspace_id>")
+def delete_workspace(workspace_id):
+    workspace_id = clean_workspace_id(workspace_id)
+    if not workspace_id:
+        return jsonify({"error": "Workspace id is required."}), 400
+    with db() as connection:
+        connection.execute("DELETE FROM workspaces WHERE workspace_id = ?", (workspace_id,))
+    return jsonify({"workspaceId": workspace_id, "deleted": True})
 
 
 @app.post("/api/generate-game")
@@ -137,6 +173,53 @@ def static_files(filename):
     if filename not in PUBLIC_FILES:
         return jsonify({"error": "not found"}), 404
     return send_from_directory(BASE_DIR, filename)
+
+
+def db():
+    connection = sqlite3.connect(DB_PATH)
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workspaces (
+            workspace_id TEXT PRIMARY KEY,
+            state_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    return connection
+
+
+def clean_workspace_id(value):
+    return re.sub(r"[^a-zA-Z0-9_.:@-]", "", str(value or "").strip())[:160]
+
+
+def load_workspace(workspace_id):
+    with db() as connection:
+        row = connection.execute(
+            "SELECT state_json FROM workspaces WHERE workspace_id = ?",
+            (workspace_id,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row[0])
+    except json.JSONDecodeError:
+        return None
+
+
+def save_workspace_state(workspace_id, state):
+    state_json = json.dumps(state, separators=(",", ":"), ensure_ascii=False)
+    with db() as connection:
+        connection.execute(
+            """
+            INSERT INTO workspaces (workspace_id, state_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(workspace_id) DO UPDATE SET
+              state_json = excluded.state_json,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (workspace_id, state_json),
+        )
 
 
 def verify_google_credential(credential, client_id):

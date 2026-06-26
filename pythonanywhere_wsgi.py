@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 
 
@@ -10,5 +11,7 @@ if not PROJECT_DIR.exists():
 
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
+
+os.environ.setdefault("CLASSMATE_DATA_DIR", str(Path.home() / "classmate_data"))
 
 from server import app as application  # noqa: E402
