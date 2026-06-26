@@ -1,5 +1,6 @@
 const STORAGE_KEY = "classmate.prototype.v23.final-remake";
 const DEVICE_WORKSPACE_KEY = "classmate.device.workspace";
+const DEVICE_WORKSPACE_SECRET_KEY = "classmate.device.workspace.secret";
 const OLD_STORAGE_KEYS = [
   "classmate.prototype.v1",
   "classmate.prototype.v2.fresh",
@@ -122,7 +123,7 @@ function load() {
 function clearOldClassMateStorage() {
   OLD_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   Object.keys(localStorage)
-    .filter((key) => key.startsWith("classmate.") && key !== STORAGE_KEY)
+    .filter((key) => key.startsWith("classmate.") && ![STORAGE_KEY, DEVICE_WORKSPACE_KEY, DEVICE_WORKSPACE_SECRET_KEY].includes(key))
     .forEach((key) => localStorage.removeItem(key));
 }
 
@@ -154,9 +155,32 @@ function getDeviceWorkspaceId() {
   return id;
 }
 
+function getDeviceWorkspaceSecret() {
+  let secret = localStorage.getItem(DEVICE_WORKSPACE_SECRET_KEY);
+  if (!secret) {
+    const bytes = new Uint8Array(24);
+    if (window.crypto?.getRandomValues) {
+      window.crypto.getRandomValues(bytes);
+      secret = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    } else {
+      secret = `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    }
+    localStorage.setItem(DEVICE_WORKSPACE_SECRET_KEY, secret);
+  }
+  return secret;
+}
+
 function workspaceId() {
   const email = state.auth?.signedIn && state.auth?.email ? state.auth.email.toLowerCase() : "";
   return email ? `google:${email}` : getDeviceWorkspaceId();
+}
+
+function workspaceAuthHeaders(includeJson = false) {
+  const headers = includeJson ? { "Content-Type": "application/json" } : {};
+  if (!state.auth?.signedIn) {
+    headers["X-ClassMate-Workspace-Secret"] = getDeviceWorkspaceSecret();
+  }
+  return headers;
 }
 
 function cloudSafeState() {
@@ -176,7 +200,10 @@ async function initCloudSync() {
 async function loadCloudWorkspace() {
   const id = workspaceId();
   try {
-    const response = await fetch(`/api/workspace/${encodeURIComponent(id)}`);
+    const response = await fetch(`/api/workspace/${encodeURIComponent(id)}`, {
+      credentials: "same-origin",
+      headers: workspaceAuthHeaders()
+    });
     const data = await response.json().catch(() => ({}));
     if (response.ok && data.state) {
       state = normalizeState({ ...data.state, sync: { status: "saved", message: "Loaded from cloud." } });
@@ -217,7 +244,8 @@ async function saveCloudWorkspace() {
   try {
     const response = await fetch(`/api/workspace/${encodeURIComponent(id)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      headers: workspaceAuthHeaders(true),
       body: JSON.stringify({ state: cloudSafeState() })
     });
     if (!response.ok) throw new Error("Cloud save failed.");
@@ -1126,8 +1154,9 @@ async function handleGoogleCredential(response) {
   try {
     const result = await fetch("/api/google-login", {
       method: "POST",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credential: response.credential })
+      body: JSON.stringify({ credential: response.credential, role: pendingAuthRole || "student" })
     });
     const data = await result.json().catch(() => ({}));
     if (!result.ok || !data.user) throw new Error(data.error || "Google sign-in failed.");
@@ -1871,6 +1900,7 @@ async function handle(action, id) {
     save();
   }
   if (action === "sign-out") {
+    await fetch("/api/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
     state.auth = { ...seed.auth, provider: "Guest", role: state.auth?.role || "student" };
     cloudLoadStarted = false;
     cloudReady = false;
@@ -1882,6 +1912,7 @@ async function handle(action, id) {
     await deleteCloudWorkspace();
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(DEVICE_WORKSPACE_KEY);
+    localStorage.removeItem(DEVICE_WORKSPACE_SECRET_KEY);
     clearOldClassMateStorage();
     state = structuredClone(seed);
     cloudLoadStarted = false;
@@ -1894,7 +1925,11 @@ async function handle(action, id) {
 
 async function deleteCloudWorkspace() {
   try {
-    await fetch(`/api/workspace/${encodeURIComponent(workspaceId())}`, { method: "DELETE" });
+    await fetch(`/api/workspace/${encodeURIComponent(workspaceId())}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: workspaceAuthHeaders()
+    });
   } catch {
     // Local reset should still work if the network is unavailable.
   }

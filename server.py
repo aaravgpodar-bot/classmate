@@ -1,14 +1,16 @@
 import json
 import io
+import hmac
 import os
 import re
 import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_file, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory, session
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -23,6 +25,12 @@ PUBLIC_FILES = {
 }
 
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "classmate-dev-secret-change-me")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("FLASK_COOKIE_SECURE", "0") == "1",
+)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -54,7 +62,16 @@ def google_login():
         user = verify_google_credential(credential, client_id)
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 401
-    return jsonify({"user": user})
+    session["workspace_id"] = f"google:{user['email'].lower()}"
+    session["email"] = user["email"].lower()
+    session["role"] = str(body.get("role", "student")).strip()[:20] or "student"
+    return jsonify({"user": user, "workspaceId": session["workspace_id"]})
+
+
+@app.post("/api/logout")
+def logout():
+    session.clear()
+    return jsonify({"signedOut": True})
 
 
 @app.get("/api/workspace/<workspace_id>")
@@ -62,6 +79,9 @@ def get_workspace(workspace_id):
     workspace_id = clean_workspace_id(workspace_id)
     if not workspace_id:
         return jsonify({"error": "Workspace id is required."}), 400
+    auth_error = authorize_workspace(workspace_id, allow_create=True)
+    if auth_error:
+        return auth_error
     saved = load_workspace(workspace_id)
     return jsonify({"workspaceId": workspace_id, "state": saved})
 
@@ -75,6 +95,9 @@ def save_workspace(workspace_id):
     state = body.get("state", {})
     if not isinstance(state, dict):
         return jsonify({"error": "Workspace state must be an object."}), 400
+    auth_error = authorize_workspace(workspace_id, allow_create=True)
+    if auth_error:
+        return auth_error
     save_workspace_state(workspace_id, state)
     return jsonify({"workspaceId": workspace_id, "saved": True})
 
@@ -84,6 +107,9 @@ def delete_workspace(workspace_id):
     workspace_id = clean_workspace_id(workspace_id)
     if not workspace_id:
         return jsonify({"error": "Workspace id is required."}), 400
+    auth_error = authorize_workspace(workspace_id, allow_create=False)
+    if auth_error:
+        return auth_error
     with db() as connection:
         connection.execute("DELETE FROM workspaces WHERE workspace_id = ?", (workspace_id,))
     return jsonify({"workspaceId": workspace_id, "deleted": True})
@@ -175,18 +201,75 @@ def static_files(filename):
     return send_from_directory(BASE_DIR, filename)
 
 
+def init_db():
+    with sqlite3.connect(DB_PATH) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspaces (
+                workspace_id TEXT PRIMARY KEY,
+                owner_kind TEXT NOT NULL DEFAULT 'guest',
+                owner_id TEXT NOT NULL DEFAULT '',
+                workspace_secret TEXT NOT NULL DEFAULT '',
+                state_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(workspaces)").fetchall()}
+        if "owner_kind" not in columns:
+            connection.execute("ALTER TABLE workspaces ADD COLUMN owner_kind TEXT NOT NULL DEFAULT 'guest'")
+        if "owner_id" not in columns:
+            connection.execute("ALTER TABLE workspaces ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''")
+        if "workspace_secret" not in columns:
+            connection.execute("ALTER TABLE workspaces ADD COLUMN workspace_secret TEXT NOT NULL DEFAULT ''")
+
+
+@contextmanager
 def db():
     connection = sqlite3.connect(DB_PATH)
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS workspaces (
-            workspace_id TEXT PRIMARY KEY,
-            state_json TEXT NOT NULL,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def workspace_owner(workspace_id):
+    if workspace_id.startswith("google:"):
+        return "google", workspace_id.split(":", 1)[1].lower()
+    return "guest", workspace_id
+
+
+def request_workspace_secret():
+    return str(request.headers.get("X-ClassMate-Workspace-Secret", "")).strip()
+
+
+def authorize_workspace(workspace_id, allow_create):
+    owner_kind, owner_id = workspace_owner(workspace_id)
+    if owner_kind == "google":
+        if session.get("workspace_id") != workspace_id:
+            return jsonify({"error": "Sign in with the matching Google account to access this workspace."}), 403
+        return None
+
+    secret = request_workspace_secret()
+    if not secret:
+        return jsonify({"error": "Workspace secret is required for guest sync."}), 403
+    with db() as connection:
+        row = connection.execute(
+            "SELECT workspace_secret FROM workspaces WHERE workspace_id = ?",
+            (workspace_id,),
+        ).fetchone()
+    if not row:
+        return None if allow_create else (jsonify({"error": "Workspace not found."}), 404)
+    if not hmac.compare_digest(row[0] or "", secret):
+        return jsonify({"error": "This device is not allowed to access that guest workspace."}), 403
+    return None
+
+
+init_db()
 
 
 def clean_workspace_id(value):
@@ -209,16 +292,24 @@ def load_workspace(workspace_id):
 
 def save_workspace_state(workspace_id, state):
     state_json = json.dumps(state, separators=(",", ":"), ensure_ascii=False)
+    owner_kind, owner_id = workspace_owner(workspace_id)
+    workspace_secret = request_workspace_secret() if owner_kind == "guest" else ""
     with db() as connection:
         connection.execute(
-            """
-            INSERT INTO workspaces (workspace_id, state_json, updated_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
+        """
+            INSERT INTO workspaces (workspace_id, owner_kind, owner_id, workspace_secret, state_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(workspace_id) DO UPDATE SET
+              owner_kind = excluded.owner_kind,
+              owner_id = excluded.owner_id,
+              workspace_secret = CASE
+                WHEN workspaces.workspace_secret = '' THEN excluded.workspace_secret
+                ELSE workspaces.workspace_secret
+              END,
               state_json = excluded.state_json,
               updated_at = CURRENT_TIMESTAMP
             """,
-            (workspace_id, state_json),
+            (workspace_id, owner_kind, owner_id, workspace_secret, state_json),
         )
 
 
