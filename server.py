@@ -1,11 +1,13 @@
 import json
+import io
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -100,6 +102,34 @@ def extract_timetable():
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 503
     return jsonify({"source": "openai", "timetable": result})
+
+
+@app.post("/api/export-assignment")
+def export_assignment():
+    body = request.get_json(silent=True) or {}
+    assignment = body.get("assignment", {}) if isinstance(body.get("assignment"), dict) else {}
+    title = str(assignment.get("title", "ClassMate project")).strip()[:120] or "ClassMate project"
+    kind = str(assignment.get("kind", "PowerPoint PPTX")).strip()[:80] or "PowerPoint PPTX"
+    sections = assignment.get("sections", []) if isinstance(assignment.get("sections"), list) else []
+    file_base = safe_filename(title)
+    try:
+        if re.search(r"word|docx|notion|pdf", kind, flags=re.I):
+            data = build_docx_export(title, kind, assignment, sections)
+            return send_file(
+                data,
+                as_attachment=True,
+                download_name=f"{file_base}.docx",
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        data = build_pptx_export(title, kind, assignment, sections)
+        return send_file(
+            data,
+            as_attachment=True,
+            download_name=f"{file_base}.pptx",
+            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+    except ImportError:
+        return jsonify({"error": "Export libraries are not installed. Run pip install -r requirements.txt."}), 503
 
 
 @app.get("/<path:filename>")
@@ -291,9 +321,9 @@ def ai_extract_timetable(image_data_url):
                         "type": "text",
                         "text": (
                             "Read this school timetable photo. Return only JSON with this shape: "
-                            '{"name":"Photo timetable","classes":[{"day":"Mon|Tue|Wed|Thu|Fri","period":"string","time":"string","subject":"string","color":"#3157d5"}],'
+                            '{"name":"Photo timetable","classes":[{"day":"Mon|Tue|Wed|Thu|Fri|Sat|Sun","period":"string","time":"string","subject":"string","color":"#3157d5"}],'
                             '"materials":{"Subject":["notebook"]},"notes":["string"]}. '
-                            "Use blank time when no time is visible. Include only weekdays and classes you can read."
+                            "Use blank time when no time is visible. Include all readable school, homework, activity, travel, or study blocks."
                         ),
                     },
                     {"type": "image_url", "image_url": {"url": image_data_url}},
@@ -324,8 +354,70 @@ def openai_request(payload, api_key):
     )
 
 
+def safe_filename(value):
+    cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower()
+    return cleaned[:60] or "classmate-project"
+
+
+def section_text(section):
+    name = str(section.get("name", "Section")).strip()
+    status = str(section.get("status", "To do")).strip()
+    owner = str(section.get("owner", "You")).strip()
+    comments = str(section.get("comments", 0))
+    suggestions = str(section.get("suggestions", 0))
+    return name, f"Status: {status}\nOwner: {owner}\nComments: {comments}\nSuggested edits: {suggestions}"
+
+
+def build_pptx_export(title, kind, assignment, sections):
+    from pptx import Presentation
+    from pptx.util import Pt
+
+    prs = Presentation()
+    title_slide = prs.slides.add_slide(prs.slide_layouts[0])
+    title_slide.shapes.title.text = title
+    title_slide.placeholders[1].text = f"ClassMate template for {kind}"
+    for section in sections[:12] or [{"name": "Plan", "status": "To do", "owner": "You"}]:
+        name, body = section_text(section)
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = name
+        textbox = slide.placeholders[1]
+        textbox.text = body
+        for paragraph in textbox.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.size = Pt(18)
+    if assignment.get("theme"):
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = "Visual Direction"
+        slide.placeholders[1].text = str(assignment.get("theme", "Clean student style"))
+    output = io.BytesIO()
+    prs.save(output)
+    output.seek(0)
+    return output
+
+
+def build_docx_export(title, kind, assignment, sections):
+    from docx import Document
+
+    document = Document()
+    document.add_heading(title, 0)
+    document.add_paragraph(f"ClassMate template for {kind}")
+    if assignment.get("theme"):
+        document.add_paragraph(f"Look: {assignment.get('theme')}")
+    document.add_paragraph(f"Lead: {assignment.get('lead', 'You')}")
+    document.add_paragraph(f"Feedback: {assignment.get('feedback', 'Balanced')}")
+    for index, section in enumerate(sections[:30] or [{"name": "Plan", "status": "To do", "owner": "You"}], start=1):
+        name, body = section_text(section)
+        document.add_heading(f"{index}. {name}", level=1)
+        for line in body.splitlines():
+            document.add_paragraph(line)
+    output = io.BytesIO()
+    document.save(output)
+    output.seek(0)
+    return output
+
+
 def normalize_timetable(raw):
-    valid_days = {"Mon", "Tue", "Wed", "Thu", "Fri"}
+    valid_days = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
     classes = []
     for item in (raw.get("classes", []) if isinstance(raw.get("classes"), list) else [])[:60]:
         day = str(item.get("day", "")).strip().title()[:3]

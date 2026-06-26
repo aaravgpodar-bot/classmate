@@ -273,9 +273,9 @@ def ai_extract_timetable(image_data_url):
                         "type": "text",
                         "text": (
                             "Read this school timetable photo. Return only JSON with this shape: "
-                            '{"name":"Photo timetable","classes":[{"day":"Mon|Tue|Wed|Thu|Fri","period":"string","time":"string","subject":"string","color":"#3157d5"}],'
+                            '{"name":"Photo timetable","classes":[{"day":"Mon|Tue|Wed|Thu|Fri|Sat|Sun","period":"string","time":"string","subject":"string","color":"#3157d5"}],'
                             '"materials":{"Subject":["notebook"]},"notes":["string"]}. '
-                            "Use blank time when no time is visible. Include only weekdays and classes you can read."
+                            "Use blank time when no time is visible. Include all readable school, homework, activity, travel, or study blocks."
                         ),
                     },
                     {"type": "image_url", "image_url": {"url": image_data_url}},
@@ -307,7 +307,7 @@ def openai_request(payload, api_key):
 
 
 def normalize_timetable(raw):
-    valid_days = {"Mon", "Tue", "Wed", "Thu", "Fri"}
+    valid_days = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
     classes = []
     for item in (raw.get("classes", []) if isinstance(raw.get("classes"), list) else [])[:60]:
         day = str(item.get("day", "")).strip().title()[:3]

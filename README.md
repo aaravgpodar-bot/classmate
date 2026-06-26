@@ -22,16 +22,16 @@ Or run the local AI server:
 python local_ai_server.py
 ```
 
-Set `OPENAI_API_KEY` before running. Without it, ClassQuest will not generate questions.
+Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, presentation ideas, and timetable extraction will show setup-needed messages instead of mock results.
 
 ## Included
 
 - PWA manifest and service worker.
 - First-run onboarding with no default contacts, groups, reminders, books, or projects.
-- Timetable photo upload placeholder; extraction requires a real AI timetable endpoint.
+- Timetable photo upload with OpenAI Vision extraction for full-week school, homework, activity, travel, or study blocks.
 - Dashboard with most-recent/urgent focus.
 - Time/type dashboard toggle and customizable sections.
-- Multiple timetable preview with optional times.
+- Whole-day timetable preview with optional times, full week support, and visible validation for required schedule fields.
 - Active timetable switching and manual class creation.
 - Subject-level material mapping.
 - Editable material lists and optional suggested materials.
@@ -44,10 +44,12 @@ Set `OPENAI_API_KEY` before running. Without it, ClassQuest will not generate qu
 - Confirmer approve/reject/edit-before-approve interactions, with third-confirmer tie-breaker shown.
 - Group and private-chat-ready UI rules: named chat, unread counts, no read receipts, delete/report controls.
 - Accepted-contact gating for private chats.
-- Assignment Studio preview with structured PPTX/DOCX projects, section owners, project lead, comments, suggested edits, feedback modes, and export actions.
+- Assignment Studio with Canva, Google Slides, PowerPoint, Word, PDF, and Notion template workspaces, section owners, project lead, comments, suggested edits, feedback modes, share briefs, and downloadable exports.
 - Interactive comments, suggested edits, and project-lead reassignment counters.
 - Notification settings with browser permission and test notification.
-- ClassQuest arcade: type any subject, generate 10 OpenAI-backed rounds, and play different round types including quiz battle, true/false, typed answer, and best-move choices.
+- ClassQuest arcade: type any subject, choose a timed game style, generate 10 OpenAI-backed rounds, and play different round types including quiz battle, true/false, typed answer, and best-move choices with typo-tolerant answer analysis.
+- Google sign-in/sign-up wiring for student and teacher roles, plus guest mode while `GOOGLE_CLIENT_ID` is not configured.
+- PWA install support with refreshed app icon and service-worker caching for phone, desktop, and tablet installs.
 
 ## Next Build Step
 
@@ -56,7 +58,7 @@ The next practical step is to connect these flows to a real app stack:
 - Next.js or React frontend if we want component structure and routing.
 - Supabase for auth, database, and realtime chat.
 - OpenAI API for timetable extraction and reminder parsing.
-- PPTX/DOCX generation libraries for editable exports.
+- Supabase or another backend database for real shared accounts, files, groups, and classroom sync.
 
 ## PythonAnywhere
 

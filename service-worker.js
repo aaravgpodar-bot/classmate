@@ -1,4 +1,4 @@
-const CACHE_NAME = "classmate-clean";
+const CACHE_NAME = "classmate-final-v23-1";
 const APP_SHELL = [
   "/",
   "/index.html",

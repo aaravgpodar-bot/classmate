@@ -1,6 +1,6 @@
 # ClassMate Chat Info
 
-Updated: 2026-06-24
+Updated: 2026-06-25
 
 ## Current App
 
@@ -81,11 +81,15 @@ PythonAnywhere account `AaravG13`, app folder `/home/AaravG13/classmate`, WSGI f
   - `/api/extract-timetable` extracts timetable data from an uploaded image.
 - Games:
   - Subject prompt accepts anything the student types.
+  - Includes selectable timed styles: Quest, Speed Run, Boss Battle, and Flash Cards.
   - Includes varied modes such as multiple choice, true/false, typed answer, and best move.
+  - Answer analysis accepts clear typos, extra words, and close token matches.
 - Assignment Studio:
   - AI presentation/template generator.
   - Submissions paraphraser.
-  - Project creation for PPTX/DOCX-style workspaces.
+  - Project and template workspaces for Canva, Google Slides, PowerPoint PPTX, Word DOCX, PDF, and Notion.
+  - Share brief copy action.
+  - Download action for PPTX/DOCX when export libraries are installed, with an HTML fallback for phones/desktops.
 - Groups:
   - Empty by default.
   - Create/join flows.
@@ -99,28 +103,34 @@ PythonAnywhere account `AaravG13`, app folder `/home/AaravG13/classmate`, WSGI f
 
 Recent local checks:
 
-- `node --check app.v19.js` passed.
-- `python -m py_compile server.py classmate_server_v19.py local_ai_server.py` passed.
+- Canonical files only: `index.html`, `app.js`, `styles.css`, `manifest.json`, `service-worker.js`, `server.py`, `local_ai_server.py`.
+- Professor cleanup removed version-suffix file sprawl from the repo.
+- `node --check app.js` passed.
+- `node --check service-worker.js` passed.
+- `python -m py_compile server.py local_ai_server.py pythonanywhere_wsgi.py` passed.
+- `python -m json.tool manifest.json` passed.
+- Flask `/api/export-assignment` produced real `.pptx` and `.docx` files after installing `requirements.txt` locally.
 - Desktop fresh-start check:
-  - v19 JS/CSS loaded.
+  - Canonical JS/CSS loaded on a fresh local port to avoid old service-worker cache.
   - "School, sorted." visible.
-  - Old crowded first-screen text removed.
+  - New logo rendered.
   - No console errors.
   - Tutorial appeared.
-  - Activities, Timetable, Reminders, and Library add flows worked.
-- Mobile fresh-start check at 390px:
+  - Library Add book flow jumped from dashboard to Library and focused the form.
+  - Timetable Add block highlighted missing title/time fields.
+  - Timetable block save worked.
+  - Studio template creation worked.
+  - Studio export showed a visible downloaded-file notice.
+  - Games displayed all four timed styles.
+- Mobile shell check at phone width:
   - No horizontal document overflow.
-  - Only the two intended start buttons are visible.
-  - Old crowded text removed.
-  - No console errors.
-- Mobile in-app nav check:
   - All tabs visible/reachable in scrollable bottom nav.
-  - Settings opened successfully.
+  - Visible button text did not clip.
   - No console errors.
 
 Earlier live checks:
 
-- Live app served v19 assets.
+- Live app previously served older assets; verify after every PythonAnywhere deploy.
 - Live tutorial, activities, timetable, reminders, and library flows worked.
 - Live `/health` returned ok.
 - Live `/api/config` returned an empty Google client ID until configured.
@@ -128,18 +138,18 @@ Earlier live checks:
 
 ## Known Setup Items
 
-- V22 remake:
-  - Uses `classmate.prototype.v22.clean-remake` as the only active local storage key.
-  - Removes older `classmate.*` localStorage keys on load, including the previous Google/global prototype state.
+- V23 final remake:
+  - Uses `classmate.prototype.v23.final-remake` as the only active local storage key.
+  - Removes older `classmate.*` localStorage keys on load, including the previous Google/global prototype state and v22 remake state.
   - Starts with no signed-in account, no default contacts, and no saved demo workspace.
   - First screen is simplified around Student with Google, Teacher with Google, and Guest workspace.
   - Sidebar navigation is grouped into Today, School, Create, and App.
-  - PWA files now use v22 assets: `app.v22.js`, `styles.v22.css`, `manifest.v22.json`, and `service-worker.v22.js`.
+  - PWA files use canonical assets: `app.js`, `styles.css`, `manifest.json`, and `service-worker.js`.
 - Google login is wired but not fully active until `GOOGLE_CLIENT_ID` is added to PythonAnywhere.
 - The OpenAI API key was pasted in chat earlier and should be rotated later for safety. Do not store or repeat the key in project docs.
 - The app is currently a localStorage/prototype-style frontend with Flask AI endpoints, not a full production database app yet.
-- PythonAnywhere file editor previously appended to existing files, so versioned files like `app.v19.js`, `styles.v19.css`, and `index.v19.html` are safer for deployment.
-- Old service-worker state in a browser may request old v13 files during local testing. The current v19 HTML does not register the service worker.
+- PythonAnywhere deployment should upload/pull canonical files only. Do not recreate old version-suffix assets.
+- Old service-worker state in a browser may request old cached files during local testing. The current canonical HTML registers `service-worker.js`.
 - GitHub collaborator invitations were previously sent for `ashishefe` and `keshavatearth`; acceptance status may need checking in GitHub.
 - `The_Fork_the_Witch_and_the_Worm_Book_4_5.pdf` is present locally but unrelated and intentionally untracked.
 
@@ -148,7 +158,6 @@ Earlier live checks:
 - Add a real database/auth layer after Google OAuth is configured.
 - Add real persistent user accounts and cloud sync.
 - Add proper file storage for documents instead of local file-name tracking.
-- Add downloadable PPTX/DOCX export generation.
+- Install `python-pptx` and `python-docx` from `requirements.txt` on PythonAnywhere for real export downloads.
 - Add production notification scheduling for morning/evening reminders.
-- Add a settings page field for school-day end time and reminder times.
 - Rotate the OpenAI key and move all secrets into PythonAnywhere environment/config only.

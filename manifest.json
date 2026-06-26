@@ -10,7 +10,7 @@
   "theme_color": "#0e6f74",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%232f6f73'/%3E%3Cpath d='M27 35c13-9 27-9 37 0 10-9 24-9 37 0v58c-13-7-27-7-37 1-10-8-24-8-37-1V35Z' fill='%23f6f0d8'/%3E%3Cpath d='M64 35v59' stroke='%232f6f73' stroke-width='5'/%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20128%20128'%3E%3Crect%20width%3D'128'%20height%3D'128'%20rx%3D'26'%20fill%3D'%23102033'%2F%3E%3Cpath%20d%3D'M23%2020h68c14%200%2025%2011%2025%2025v63H48c-14%200-25-11-25-25V20Z'%20fill%3D'%232f63d8'%2F%3E%3Cpath%20d%3D'M38%2043c11-7%2022-7%2030%200%208-7%2019-7%2030%200v45c-11-5-22-5-30%202-8-7-19-7-30-2V43Z'%20fill%3D'%23fff7d1'%2F%3E%3Cpath%20d%3D'M68%2043v47'%20stroke%3D'%232f63d8'%20stroke-width%3D'6'%20stroke-linecap%3D'round'%2F%3E%3Cpath%20d%3D'M100%2024l4%209%209%204-9%204-4%209-4-9-9-4%209-4%204-9Z'%20fill%3D'%2357f5d1'%2F%3E%3C%2Fsvg%3E",
       "sizes": "128x128",
       "type": "image/svg+xml"
     }

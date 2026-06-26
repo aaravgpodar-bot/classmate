@@ -1,9 +1,19 @@
-const STORAGE_KEY = "classmate.prototype.v22.clean-remake";
+const STORAGE_KEY = "classmate.prototype.v23.final-remake";
 const OLD_STORAGE_KEYS = [
   "classmate.prototype.v1",
   "classmate.prototype.v2.fresh",
   "classmate.prototype.v6.mixed-games",
-  "classmate.prototype.v7.global-google"
+  "classmate.prototype.v7.global-google",
+  "classmate.prototype.v22.clean-remake"
+];
+
+const DASHBOARD_SECTIONS = ["recent", "tomorrow", "due", "library", "groups"];
+const TEMPLATE_KINDS = ["Canva", "Google Slides", "PowerPoint PPTX", "Word DOCX", "PDF", "Notion"];
+const GAME_STYLES = [
+  { id: "quest", name: "Quest", time: 35, label: "ClassQuest" },
+  { id: "speed", name: "Speed Run", time: 18, label: "Speed Run" },
+  { id: "boss", name: "Boss Battle", time: 45, label: "Boss Battle" },
+  { id: "flash", name: "Flash Cards", time: 25, label: "Flash Sprint" }
 ];
 
 const seed = {
@@ -11,7 +21,7 @@ const seed = {
   tutorialDone: false,
   auth: { signedIn: false, email: "", picture: "", provider: "", role: "student" },
   install: { ready: false, installed: false, message: "" },
-  version: "v22-clean-remake",
+  version: "v23-final-remake",
   view: "dashboard",
   dashboardMode: "time",
   dashboardSections: ["recent", "tomorrow", "due", "library", "groups"],
@@ -58,6 +68,9 @@ const seed = {
   },
   games: {
     subject: "",
+    style: "quest",
+    timePerRound: 35,
+    roundDeadline: 0,
     status: "setup",
     source: "",
     error: "",
@@ -67,6 +80,7 @@ const seed = {
     lives: 3,
     streak: 0,
     bestStreak: 0,
+    answerReview: "",
     lastResult: ""
   },
   settings: {
@@ -75,7 +89,10 @@ const seed = {
     schoolDayEnd: "15:30",
     eveningReview: "19:00",
     quietHours: "9:30 PM - 6:30 AM",
-    notifications: false
+    notifications: false,
+    installHints: true,
+    defaultLeadTime: "1 day before",
+    themeMood: "balanced"
   }
 };
 
@@ -84,6 +101,8 @@ let draftReminder = null;
 let googleClientId = "";
 let installPromptEvent = null;
 let pendingAuthRole = "student";
+let pendingFocusSelector = "";
+let gameTimerId = null;
 
 function load() {
   try {
@@ -134,6 +153,10 @@ function show(view) {
   setState({ view });
 }
 
+function focusAfterRender(selector) {
+  pendingFocusSelector = selector;
+}
+
 function titleCase(value) {
   return String(value || "")
     .trim()
@@ -143,6 +166,49 @@ function titleCase(value) {
 
 function normalizeMaterials(items) {
   return [...new Set(items.map(titleCase).filter(Boolean))];
+}
+
+function currentGameStyle(game = state.games) {
+  return GAME_STYLES.find((style) => style.id === game.style) || GAME_STYLES[0];
+}
+
+function setFormMessage(id, message, type = "error") {
+  const target = document.getElementById(id);
+  if (!target) return;
+  target.textContent = message;
+  target.className = `form-message ${type}`;
+}
+
+function clearFormMessage(id) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  target.textContent = "";
+  target.className = "form-message";
+}
+
+function clearValidation(containerSelector) {
+  document.querySelector(containerSelector)?.querySelectorAll(".field.invalid").forEach((field) => {
+    field.classList.remove("invalid");
+    field.querySelector("input, select, textarea")?.removeAttribute("aria-invalid");
+  });
+}
+
+function markRequired(selectors, messageId, message) {
+  const missing = selectors.filter((selector) => {
+    const input = document.querySelector(selector);
+    const empty = !String(input?.value || "").trim();
+    input?.closest(".field")?.classList.toggle("invalid", empty);
+    if (empty) input?.setAttribute("aria-invalid", "true");
+    else input?.removeAttribute("aria-invalid");
+    return empty;
+  });
+  if (missing.length) {
+    setFormMessage(messageId, message);
+    document.querySelector(missing[0])?.focus();
+  } else {
+    clearFormMessage(messageId);
+  }
+  return missing;
 }
 
 function periodNumber(period) {
@@ -182,17 +248,43 @@ function render() {
   appRoot().innerHTML = state.onboarded ? shell() : onboarding();
   bind();
   mountGoogleSignIn();
+  flushPendingFocus();
+  setupGameTimer();
 }
 
 function roleLabel() {
   return state.auth?.role === "teacher" ? "Teacher" : "Student";
 }
 
+function logoMarkup() {
+  return `<div class="logo" aria-hidden="true">
+    <svg viewBox="0 0 64 64" focusable="false">
+      <path class="logo-bg" d="M10 9h34c6.6 0 12 5.4 12 12v34H22c-6.6 0-12-5.4-12-12V9Z"/>
+      <path class="logo-book" d="M18 20c5.2-3 10.4-3 14 0 3.6-3 8.8-3 14 0v24c-5.2-2.4-10.4-2.4-14 .8-3.6-3.2-8.8-3.2-14-.8V20Z"/>
+      <path class="logo-line" d="M32 20v24.8"/>
+      <path class="logo-spark" d="M47 12l1.8 4.1 4.2 1.9-4.2 1.8L47 24l-1.9-4.2L41 18l4.1-1.9L47 12Z"/>
+    </svg>
+  </div>`;
+}
+
+function flushPendingFocus() {
+  if (!pendingFocusSelector) return;
+  const selector = pendingFocusSelector;
+  pendingFocusSelector = "";
+  requestAnimationFrame(() => {
+    const element = document.querySelector(selector);
+    element?.focus();
+    const field = element?.closest(".field");
+    field?.classList.add("attention");
+    window.setTimeout(() => field?.classList.remove("attention"), 900);
+  });
+}
+
 function onboarding() {
   return `
     <main class="hero remake-hero">
       <section class="hero-copy">
-        <div class="brand"><div class="logo">CM</div><div><h1>ClassMate</h1><p>Your school day, remembered.</p></div></div>
+        <div class="brand">${logoMarkup()}<div><h1>ClassMate</h1><p>Your school day, remembered.</p></div></div>
         <span class="eyebrow">Clean start</span>
         <h1>School, sorted without the clutter.</h1>
         <p>Plan your whole day, join classrooms, remember homework, return books, and use real AI tools when you need them.</p>
@@ -229,7 +321,7 @@ function shell() {
   return `
     <div class="shell">
       <aside class="sidebar">
-        <div class="brand sidebar-brand"><div class="logo">CM</div><div><h1>ClassMate</h1><p>${state.auth?.signedIn ? state.auth.email : `${roleLabel()} guest workspace`}</p></div></div>
+        <div class="brand sidebar-brand">${logoMarkup()}<div><h1>ClassMate</h1><p>${state.auth?.signedIn ? state.auth.email : `${roleLabel()} guest workspace`}</p></div></div>
         <nav class="nav grouped-nav">${tabGroups.map(navGroup).join("")}</nav>
       </aside>
       <main class="main">
@@ -282,7 +374,13 @@ function viewContent() {
     games,
     settings
   };
-  return (views[state.view] || dashboard)();
+  return `${appNotice()}${(views[state.view] || dashboard)()}`;
+}
+
+function appNotice() {
+  const message = state.install?.message;
+  if (!message) return "";
+  return `<div class="app-notice" role="status"><span>${escapeHtml(message)}</span><button class="btn compact-btn" data-action="clear-notice">Dismiss</button></div>`;
 }
 
 function header(title, subtitle, buttons = "") {
@@ -345,13 +443,13 @@ function duePanel() {
 }
 
 function libraryPanel(compact = false) {
-  return `<div class="panel ${compact ? "span-4" : "span-12"}"><div class="row"><h3>Library</h3><button class="btn" data-action="focus-library-form">Add book</button></div>
+  return `<div class="panel ${compact ? "span-4" : "span-12"}"><div class="row"><h3>Library</h3><button class="btn" data-action="${compact ? "go-library-add-book" : "focus-library-form"}">Add book</button></div>
     ${compact ? "" : `<div class="form library-form">
       <div class="field"><label>Book title</label><input id="bookTitle" placeholder="Book title"></div>
       <div class="field"><label>Author</label><input id="bookAuthor" placeholder="Author"></div>
       <div class="field"><label>Return date</label><input id="bookDue" type="date"></div>
       <button class="btn primary" data-action="add-book">Add borrowed book</button>
-    </div>`}
+    </div><div id="bookFormMessage" class="form-message" aria-live="polite"></div>`}
     <div class="stack">
     ${state.library.map((b) => `<div class="item"><div class="row"><strong>${titleCase(b.title)}</strong><span class="chip ${b.status === "Due soon" ? "coral" : "green"}">${b.status}</span></div><span class="muted">${b.author || "Unknown author"} &middot; Return ${b.due}</span><div class="actions"><button class="btn" data-action="return-book" data-id="${b.id}">Mark returned</button><button class="btn" data-action="renew-book" data-id="${b.id}">Renew</button></div></div>`).join("") || `<div class="empty">No borrowed books.</div>`}
   </div></div>`;
@@ -451,6 +549,7 @@ function timetable() {
           <div class="field"><label>Time</label><input id="classTime" type="time"></div>
           <button class="btn primary" data-action="save-class-inline">Add block</button>
         </div>
+        <div id="classFormMessage" class="form-message" aria-live="polite"></div>
       </div>
       <div class="panel span-12">
         <div class="row"><h3>Photo Upload</h3><span class="chip green">OpenAI Vision</span></div>
@@ -607,16 +706,28 @@ function groups() {
 function studio() {
   const ai = state.presentationAi;
   const paraphrase = state.paraphraseAi || seed.paraphraseAi;
+  const templateOptions = TEMPLATE_KINDS.map((kind) => `<option>${kind}</option>`).join("");
   return `
-    ${header("Assignment Studio", "Structured shared slides and docs with comments, suggested edits, owners, and exports.", `<button class="btn primary" data-action="new-project">New project</button>`)}
+    ${header("Assignment Studio", "Create editable school workspaces for Canva, Slides, PowerPoint, Word, docs, and shareable plans.", `<button class="btn primary" data-action="new-project">New project</button>`)}
     <section class="grid">
       <div class="panel span-12">
         <h3>Create Project</h3>
         <div class="form project-form">
           <div class="field"><label>Project title</label><input id="projectTitle" placeholder="History presentation, science report"></div>
-          <div class="field"><label>Output</label><select id="projectKind"><option>PPTX</option><option>DOCX</option></select></div>
+          <div class="field"><label>Output</label><select id="projectKind">${templateOptions}</select></div>
           <button class="btn primary" data-action="new-project">Create project</button>
         </div>
+        <div id="projectFormMessage" class="form-message" aria-live="polite"></div>
+      </div>
+      <div class="panel span-12">
+        <div class="row"><h3>Template Workspace</h3><span class="chip blue">Editable plan</span></div>
+        <div class="form template-form">
+          <div class="field"><label>Template name</label><input id="templateTitle" placeholder="Volcano debate deck, club poster, lab report"></div>
+          <div class="field"><label>Platform</label><select id="templatePlatform">${templateOptions}</select></div>
+          <div class="field"><label>Look</label><input id="templateTheme" placeholder="bold school magazine, clean science, sporty"></div>
+          <button class="btn primary" data-action="create-template">Build template plan</button>
+        </div>
+        <div id="templateFormMessage" class="form-message" aria-live="polite"></div>
       </div>
       <div class="panel span-12">
         <div class="row"><h3>Submissions Paraphraser</h3><span class="chip green">OpenAI</span></div>
@@ -638,10 +749,10 @@ function studio() {
         ${renderPresentationPlan(ai)}
       </div>
       ${state.assignments.map((a) => `<div class="panel span-6">
-        <div class="row"><h3>${a.title}</h3><span class="chip ${a.kind === "PPTX" ? "blue" : "green"}">${a.kind}</span></div>
-        <p class="muted">Project Lead: ${a.lead} &middot; Feedback mode: ${a.feedback}</p>
+        <div class="row"><h3>${a.title}</h3><span class="chip ${String(a.kind).includes("Slides") || String(a.kind).includes("PPT") ? "blue" : "green"}">${a.kind}</span></div>
+        <p class="muted">Project Lead: ${a.lead} &middot; Feedback mode: ${a.feedback}${a.theme ? ` &middot; Look: ${a.theme}` : ""}</p>
         <div class="stack">${a.sections.map((s) => `<div class="item"><div class="row"><strong>${s.name}</strong><span class="chip">${s.status}</span></div><span class="muted">Owner: ${s.owner} &middot; ${s.comments} comments &middot; ${s.suggestions} suggested edits</span><div class="actions"><button class="btn" data-action="add-comment" data-id="${a.id}:${s.name}">Comment</button><button class="btn" data-action="suggest-edit" data-id="${a.id}:${s.name}">Suggest edit</button><button class="btn" data-action="reassign-section" data-id="${a.id}:${s.name}">Project Lead reassign</button></div></div>`).join("")}</div>
-        <div class="actions"><button class="btn" data-action="ai-split" data-id="${a.id}">AI task split</button><button class="btn" data-action="review-assignment" data-id="${a.id}">Review</button><button class="btn primary" data-action="export-assignment" data-id="${a.id}">Export ${a.kind}</button></div>
+        <div class="actions"><button class="btn" data-action="ai-split" data-id="${a.id}">AI task split</button><button class="btn" data-action="review-assignment" data-id="${a.id}">Review</button><button class="btn" data-action="copy-share-brief" data-id="${a.id}">Copy share brief</button><button class="btn primary" data-action="export-assignment" data-id="${a.id}">Download plan</button></div>
       </div>`).join("") || `<div class="panel span-12"><div class="empty"><strong>No projects yet.</strong><br>Create a presentation or document workspace when you get an assignment.</div></div>`}
     </section>
   `;
@@ -698,35 +809,41 @@ function renderPresentationPlan(ai) {
 function games() {
   const game = state.games;
   const question = game.questions[game.current];
+  const style = currentGameStyle(game);
   const progress = game.questions.length ? Math.round((game.current / game.questions.length) * 100) : 0;
   const isFinished = game.status === "finished" || !question;
   return `
-    ${header("Games", "Type any subject and ClassMate builds a 10-question game for it.", `
+    ${header("Games", "Type any subject and ClassMate builds a timed 10-question game for it.", `
       <button class="btn" data-action="reset-game">Reset game</button>
     `)}
     <section class="grid">
       <div class="panel span-4">
-        <h3>ClassQuest Setup</h3>
+        <h3>${style.label} Setup</h3>
         <div class="form">
           <div class="field"><label>Subject</label><input id="gameSubject" value="${game.subject}" placeholder="Type anything: algebra, space, grammar, WW2"></div>
+          <div class="field"><label>Game</label><select id="gameStyle">${GAME_STYLES.map((item) => `<option value="${item.id}" ${item.id === style.id ? "selected" : ""}>${item.name} - ${item.time}s</option>`).join("")}</select></div>
           <button class="btn primary" data-action="start-game">Generate 10-question game</button>
+        </div>
+        <div class="game-style-list">
+          ${GAME_STYLES.map((item) => `<div class="mini-game ${item.id === style.id ? "active" : ""}"><strong>${item.name}</strong><span>${item.time}s per round</span></div>`).join("")}
         </div>
       </div>
       <div class="panel span-8">
-        ${game.status === "setup" ? `<div class="empty"><strong>Ready for a real round?</strong><br>Type a subject, hit generate, and answer 10 changing questions. You get 3 lives, streak bonuses, and a final score.</div>` : ""}
+        ${game.status === "setup" ? `<div class="empty"><strong>Ready for a real round?</strong><br>Choose a game style, type a subject, and ClassMate will generate 10 changing rounds with lives, streaks, timers, and answer analysis.</div>` : ""}
         ${game.status === "loading" ? `<div class="game-card"><h3>Building your quest...</h3><p class="muted">ClassMate is asking AI for 10 fresh questions about ${game.subject}.</p><div class="game-meter"><span style="width:72%"></span></div></div>` : ""}
         ${game.status === "playing" && question ? `
-          <div class="row"><h3>${game.subject} ClassQuest</h3><span class="chip gold">Round ${game.current + 1}/10</span></div>
+          <div class="row"><h3>${game.subject} ${style.label}</h3><span class="chip gold">Round ${game.current + 1}/10</span></div>
           <div class="game-meter"><span style="width:${progress}%"></span></div>
           <div class="game-hud">
             <span class="chip green">Score ${game.score}</span>
             <span class="chip coral">Lives ${"I".repeat(game.lives)}</span>
             <span class="chip blue">Streak ${game.streak}</span>
+            <span class="chip coral" data-game-timer>Time ${gameTimeLeft(game)}s</span>
             <span class="chip green">OpenAI</span>
             <span class="chip">${question.type}</span>
           </div>
           ${renderGameRound(question)}
-          ${game.lastResult ? `<div class="item"><strong>${game.lastResult}</strong></div>` : ""}
+          ${game.lastResult ? `<div class="item"><strong>${game.lastResult}</strong>${game.answerReview ? `<span class="muted">${game.answerReview}</span>` : ""}</div>` : ""}
         ` : ""}
         ${game.status === "error" ? `<div class="game-card"><h3>AI setup needed</h3><p class="muted">${game.error || "Set OPENAI_API_KEY on the server, then restart ClassMate."}</p><button class="btn primary" data-action="reset-game">Back to setup</button></div>` : ""}
         ${isFinished && game.status !== "setup" && game.status !== "error" ? `
@@ -751,6 +868,80 @@ function games() {
 
 function scrambleWord(word) {
   return word.split("").sort(() => Math.random() - 0.5).join("");
+}
+
+function gameTimeLeft(game = state.games) {
+  if (!game.roundDeadline) return game.timePerRound || currentGameStyle(game).time;
+  return Math.max(0, Math.ceil((game.roundDeadline - Date.now()) / 1000));
+}
+
+function setupGameTimer() {
+  if (gameTimerId) window.clearInterval(gameTimerId);
+  gameTimerId = null;
+  if (state.games.status !== "playing" || !state.games.roundDeadline) return;
+  gameTimerId = window.setInterval(() => {
+    const left = gameTimeLeft();
+    const timer = document.querySelector("[data-game-timer]");
+    if (timer) timer.textContent = `Time ${left}s`;
+    if (left <= 0) {
+      window.clearInterval(gameTimerId);
+      gameTimerId = null;
+      resolveGameAnswer("", { timedOut: true });
+      save();
+      render();
+    }
+  }, 500);
+}
+
+function normalizeAnswerText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(the|a|an|to|of|in|on|for|is|are|was|were)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a, b) {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = previous[0];
+    previous[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const temp = previous[j];
+      previous[j] = Math.min(
+        previous[j] + 1,
+        previous[j - 1] + 1,
+        diagonal + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      diagonal = temp;
+    }
+  }
+  return previous[b.length];
+}
+
+function analyzeGameAnswer(submitted, question) {
+  const expected = String(question.answer || "").trim();
+  const cleanSubmitted = normalizeAnswerText(submitted);
+  const cleanExpected = normalizeAnswerText(expected);
+  if (!cleanSubmitted) return { correct: false, reason: "No answer was entered." };
+  if (cleanSubmitted === cleanExpected) return { correct: true, reason: "Exact answer." };
+  if (cleanExpected.length > 3 && (cleanSubmitted.includes(cleanExpected) || cleanExpected.includes(cleanSubmitted))) {
+    return { correct: true, reason: "Accepted because the key answer was included." };
+  }
+  const distance = levenshtein(cleanSubmitted, cleanExpected);
+  const typoLimit = Math.max(1, Math.floor(cleanExpected.length * 0.25));
+  if (cleanExpected.length >= 4 && distance <= typoLimit) {
+    return { correct: true, reason: `Accepted as a close spelling match (${distance} edit${distance === 1 ? "" : "s"} away).` };
+  }
+  const expectedTokens = cleanExpected.split(" ").filter(Boolean);
+  const submittedTokens = cleanSubmitted.split(" ").filter(Boolean);
+  const matches = expectedTokens.filter((token) => submittedTokens.some((part) => part === token || levenshtein(part, token) <= Math.max(1, Math.floor(token.length * 0.25))));
+  if (expectedTokens.length && matches.length / expectedTokens.length >= 0.7) {
+    return { correct: true, reason: "Accepted because most important words matched." };
+  }
+  return { correct: false, reason: `Answer checked against "${expected}".` };
 }
 
 function renderGameRound(question) {
@@ -913,19 +1104,22 @@ async function extractTimetableWithAi(image) {
   return data.timetable;
 }
 
-function resolveGameAnswer(rawAnswer) {
+function resolveGameAnswer(rawAnswer, options = {}) {
   const game = state.games;
   const question = game.questions[game.current];
   if (!question) return;
   const submitted = String(rawAnswer || "").trim();
-  const expected = String(question.answer || "").trim();
-  const correct = submitted.toLowerCase() === expected.toLowerCase();
+  const analysis = options.timedOut
+    ? { correct: false, reason: "Time ran out for this round." }
+    : analyzeGameAnswer(submitted, question);
+  const correct = analysis.correct;
   const nextStreak = correct ? game.streak + 1 : 0;
   const bonus = correct && nextStreak >= 3 ? 5 : 0;
   const score = Math.max(0, game.score + (correct ? 10 + bonus : -3));
   const lives = correct ? game.lives : game.lives - 1;
   const current = game.current + 1;
   const finished = lives <= 0 || current >= game.questions.length;
+  const timePerRound = game.timePerRound || currentGameStyle(game).time;
   state.games = {
     ...game,
     score,
@@ -934,30 +1128,47 @@ function resolveGameAnswer(rawAnswer) {
     streak: nextStreak,
     bestStreak: Math.max(game.bestStreak, nextStreak),
     status: finished ? "finished" : "playing",
+    roundDeadline: finished ? 0 : Date.now() + timePerRound * 1000,
+    answerReview: analysis.reason,
     lastResult: correct ? `Correct. ${nextStreak >= 3 ? "Streak bonus unlocked." : "Keep going."}` : `Not quite. Correct answer: ${question.answer}.`
   };
 }
 
 function settings() {
+  const settings = state.settings || seed.settings;
   return `
     ${header("Settings", "Dashboard preferences, reminder defaults, account cleanup, and browser notification test.", `<button class="btn warn" data-action="reset">Clear local workspace</button>`)}
     <section class="grid">
-      <div class="panel span-12 clean-state-panel">
-        <div><h3>Account State</h3><span class="muted">${state.auth?.signedIn ? `Signed in with Google as ${state.auth.email}` : "No signed-in account is saved on this device."}</span></div>
-        <button class="btn warn" data-action="reset">Delete local data</button>
+      <div class="panel span-12">
+        <div class="row"><div><h3>Account</h3><span class="muted">${state.auth?.signedIn ? `Signed in with Google as ${state.auth.email}` : "No signed-in account is saved on this device."}</span></div><span class="chip ${state.auth?.signedIn ? "green" : "gold"}">${state.auth?.signedIn ? "Google" : "Guest"}</span></div>
+        <div class="actions">
+          <div id="googleSignIn" class="google-signin"></div>
+          <button id="googleFallback" class="btn primary" data-action="google-sign-in">Student Google sign-in</button>
+          <button class="btn" data-action="google-teacher-sign-in">Teacher Google sign-in</button>
+          ${state.auth?.signedIn ? `<button class="btn" data-action="sign-out">Sign out</button>` : ""}
+          <button class="btn warn" data-action="reset">Delete all local data</button>
+        </div>
       </div>
       <div class="panel span-6">
         <h3>Dashboard Sections</h3>
-        <div class="form">${["recent", "tomorrow", "due", "library", "groups"].map((s) => `<label class="row item"><span>${s[0].toUpperCase() + s.slice(1)}</span><input type="checkbox" data-section="${s}" ${state.dashboardSections.includes(s) ? "checked" : ""}></label>`).join("")}</div>
+        <div class="form">${DASHBOARD_SECTIONS.map((s) => `<label class="row item"><span>${s[0].toUpperCase() + s.slice(1)}</span><input type="checkbox" data-section="${s}" ${state.dashboardSections.includes(s) ? "checked" : ""}></label>`).join("")}</div>
       </div>
       <div class="panel span-6">
-        <h3>Notifications</h3>
-        <div class="stack">
-          <div class="item"><div class="row"><strong>Evening pack reminder</strong><span class="chip green">${state.settings.eveningPack ? "On" : "Off"}</span></div></div>
-          <div class="item"><div class="row"><strong>Morning summary</strong><span class="chip green">${state.settings.morningSummary ? "On" : "Off"}</span></div></div>
-          <div class="item"><strong>Quiet hours</strong><span class="muted">${state.settings.quietHours}</span></div>
+        <h3>Reminder Settings</h3>
+        <div class="form settings-form">
+          <div class="field"><label>School day ends</label><input id="settingSchoolDayEnd" type="time" value="${settings.schoolDayEnd}"></div>
+          <div class="field"><label>Evening review</label><input id="settingEveningReview" type="time" value="${settings.eveningReview}"></div>
+          <div class="field"><label>Quiet hours</label><input id="settingQuietHours" value="${settings.quietHours}"></div>
+          <div class="field"><label>Default lead time</label><input id="settingLeadTime" value="${settings.defaultLeadTime}"></div>
+          <div class="field"><label>Theme</label><select id="settingThemeMood">${["balanced", "calm", "sporty", "focus"].map((mood) => `<option ${settings.themeMood === mood ? "selected" : ""}>${mood}</option>`).join("")}</select></div>
+          <label class="row item"><span>Evening pack reminder</span><input id="settingEveningPack" type="checkbox" ${settings.eveningPack ? "checked" : ""}></label>
+          <label class="row item"><span>Morning summary</span><input id="settingMorningSummary" type="checkbox" ${settings.morningSummary ? "checked" : ""}></label>
+          <label class="row item"><span>Browser notifications</span><input id="settingNotifications" type="checkbox" ${settings.notifications ? "checked" : ""}></label>
+          <label class="row item"><span>Install hints</span><input id="settingInstallHints" type="checkbox" ${settings.installHints ? "checked" : ""}></label>
+          <button class="btn primary" data-action="save-settings">Save settings</button>
           <button class="btn primary" data-action="test-notification">Send test notification</button>
         </div>
+        <div id="settingsFormMessage" class="form-message" aria-live="polite"></div>
       </div>
       <div class="panel span-12">
         <h3>Download ClassMate</h3>
@@ -1096,6 +1307,11 @@ async function handle(action, id) {
   if (action === "install-app") {
     await installApp();
   }
+  if (action === "clear-notice") {
+    state.install = { ...(state.install || {}), message: "" };
+    save();
+    render();
+  }
   if (action === "choose-timetable-photo") document.querySelector("#timetablePhotoInput")?.click();
   if (action === "apply-timetable-photo") {
     const result = state.timetableUpload?.result;
@@ -1118,12 +1334,14 @@ async function handle(action, id) {
     render();
   }
   if (action === "add-class") {
+    focusAfterRender("#classSubject");
     show("timetable");
   }
   if (action === "save-class-inline") {
+    clearValidation(".class-form");
+    if (markRequired(["#classSubject", "#classTime"], "classFormMessage", "Add what this block is and the time it happens.").length) return;
     const active = state.timetables.find((t) => t.active) || state.timetables[0];
     const cleanSubject = titleCase(document.querySelector("#classSubject")?.value || "");
-    if (!cleanSubject) return;
     const day = document.querySelector("#classDay")?.value || "Mon";
     const period = document.querySelector("#classPeriod")?.value || "1";
     const kind = document.querySelector("#classKind")?.value || "School";
@@ -1242,12 +1460,18 @@ async function handle(action, id) {
     render();
   }
   if (action === "add-book") {
+    clearValidation(".library-form");
+    if (markRequired(["#bookTitle"], "bookFormMessage", "Add a book title before saving it.").length) return;
     const title = titleCase(document.querySelector("#bookTitle")?.value || "");
     if (title) {
       state.library = [{ id: `b${Date.now()}`, title, author: document.querySelector("#bookAuthor")?.value || "", due: document.querySelector("#bookDue")?.value || "In 7 days", status: "Borrowed" }, ...state.library];
       save();
       render();
     }
+  }
+  if (action === "go-library-add-book") {
+    focusAfterRender("#bookTitle");
+    show("library");
   }
   if (action === "focus-library-form") document.querySelector("#bookTitle")?.focus();
   if (action === "add-document") {
@@ -1334,9 +1558,12 @@ async function handle(action, id) {
     }
   }
   if (action === "new-project") {
+    clearValidation(".project-form");
+    if (markRequired(["#projectTitle"], "projectFormMessage", "Add a project title before creating it.").length) return;
     const title = titleCase(document.querySelector("#projectTitle")?.value || "");
     if (title) {
-      const kind = (document.querySelector("#projectKind")?.value || "PPTX").toUpperCase() === "DOCX" ? "DOCX" : "PPTX";
+      const kind = document.querySelector("#projectKind")?.value || "PowerPoint PPTX";
+      const slideLike = /canva|slides|ppt|powerpoint/i.test(kind);
       state.assignments = [{
         id: `a${Date.now()}`,
         title,
@@ -1344,12 +1571,38 @@ async function handle(action, id) {
         lead: "You",
         feedback: "Balanced",
         sections: [
-          { name: kind === "PPTX" ? "Slide 1" : "Introduction", owner: "You", status: "To do", comments: 0, suggestions: 0 }
+          { name: slideLike ? "Slide 1 - Hook" : "Introduction", owner: "You", status: "To do", comments: 0, suggestions: 0 },
+          { name: slideLike ? "Slide 2 - Main idea" : "Main section", owner: "You", status: "To do", comments: 0, suggestions: 0 },
+          { name: slideLike ? "Slide 3 - Wrap up" : "Conclusion", owner: "You", status: "To do", comments: 0, suggestions: 0 }
         ]
       }, ...state.assignments];
       save();
       render();
     }
+  }
+  if (action === "create-template") {
+    clearValidation(".template-form");
+    if (markRequired(["#templateTitle"], "templateFormMessage", "Add a template name before building it.").length) return;
+    const title = titleCase(document.querySelector("#templateTitle")?.value || "");
+    const kind = document.querySelector("#templatePlatform")?.value || "Google Slides";
+    const theme = titleCase(document.querySelector("#templateTheme")?.value || "Clean student style");
+    const slideLike = /canva|slides|ppt|powerpoint/i.test(kind);
+    state.assignments = [{
+      id: `a${Date.now()}`,
+      title,
+      kind,
+      theme,
+      lead: "You",
+      feedback: "Balanced",
+      sections: [
+        { name: slideLike ? "Cover / Title" : "Title block", owner: "You", status: "Template", comments: 0, suggestions: 0 },
+        { name: slideLike ? "Content layout" : "Body layout", owner: "You", status: "Template", comments: 0, suggestions: 0 },
+        { name: slideLike ? "Visual / media slot" : "Evidence / examples", owner: "You", status: "Template", comments: 0, suggestions: 0 },
+        { name: "Share notes", owner: "You", status: "Template", comments: 0, suggestions: 0 }
+      ]
+    }, ...state.assignments];
+    save();
+    render();
   }
   if (action === "generate-presentation") {
     const topic = (document.querySelector("#aiPresentationTopic")?.value || "").trim() || "Untitled presentation";
@@ -1427,16 +1680,32 @@ async function handle(action, id) {
   }
   if (action === "ai-split") alert("Real AI task splitting needs an assignment AI endpoint before this can run.");
   if (action === "review-assignment") alert("Real AI review needs an assignment AI endpoint before this can run.");
-  if (action === "export-assignment") alert("Prototype export placeholder. Real build will generate editable PPTX or DOCX files from structured sections.");
+  if (action === "copy-share-brief") {
+    const assignment = state.assignments.find((item) => item.id === id);
+    if (!assignment) return;
+    await navigator.clipboard?.writeText(assignmentShareBrief(assignment));
+    state.install = { ...(state.install || {}), message: "Project share brief copied." };
+    save();
+    render();
+  }
+  if (action === "export-assignment") {
+    const assignment = state.assignments.find((item) => item.id === id);
+    if (assignment) await downloadAssignment(assignment);
+  }
   if (action === "start-game") {
     const subject = normalizeSubject(document.querySelector("#gameSubject")?.value || state.games.subject);
-    state.games = { ...state.games, subject, status: "loading", lastResult: "Generating with AI..." };
+    const styleId = document.querySelector("#gameStyle")?.value || state.games.style || "quest";
+    const style = GAME_STYLES.find((item) => item.id === styleId) || GAME_STYLES[0];
+    state.games = { ...state.games, subject, style: style.id, timePerRound: style.time, roundDeadline: 0, status: "loading", lastResult: "Generating with AI..." };
     save();
     render();
     try {
       const generated = await generateGameWithAi(subject);
       state.games = {
         subject: generated.subject,
+        style: style.id,
+        timePerRound: style.time,
+        roundDeadline: Date.now() + style.time * 1000,
         status: "playing",
         source: generated.source,
         questions: generated.questions,
@@ -1445,12 +1714,15 @@ async function handle(action, id) {
         lives: 3,
         streak: 0,
         bestStreak: 0,
+        answerReview: "",
         lastResult: "OpenAI generated this quest."
       };
     } catch (error) {
       state.games = {
         ...structuredClone(seed.games),
         subject,
+        style: style.id,
+        timePerRound: style.time,
         status: "error",
         error: error.message || "Real AI is unavailable."
       };
@@ -1476,6 +1748,26 @@ async function handle(action, id) {
   if (action === "group-tutorial") alert("Group tutorial: shared reminders are anonymous to classmates, two weekly confirmers review changes, pending reminders stay visible, and urgent edits auto-activate after the timer unless rejected.");
   if (action === "join-group") alert("Join by invite link or one active group code. No public group search.");
   if (action === "customize") show("settings");
+  if (action === "save-settings") {
+    state.settings = {
+      eveningPack: Boolean(document.querySelector("#settingEveningPack")?.checked),
+      morningSummary: Boolean(document.querySelector("#settingMorningSummary")?.checked),
+      schoolDayEnd: document.querySelector("#settingSchoolDayEnd")?.value || seed.settings.schoolDayEnd,
+      eveningReview: document.querySelector("#settingEveningReview")?.value || seed.settings.eveningReview,
+      quietHours: document.querySelector("#settingQuietHours")?.value || seed.settings.quietHours,
+      notifications: Boolean(document.querySelector("#settingNotifications")?.checked),
+      installHints: Boolean(document.querySelector("#settingInstallHints")?.checked),
+      defaultLeadTime: document.querySelector("#settingLeadTime")?.value || seed.settings.defaultLeadTime,
+      themeMood: document.querySelector("#settingThemeMood")?.value || seed.settings.themeMood
+    };
+    setFormMessage("settingsFormMessage", "Settings saved.", "success");
+    save();
+  }
+  if (action === "sign-out") {
+    state.auth = { ...seed.auth, provider: "Guest", role: state.auth?.role || "student" };
+    save();
+    render();
+  }
   if (action === "test-notification") testNotification();
   if (action === "reset") {
     localStorage.removeItem(STORAGE_KEY);
@@ -1484,6 +1776,114 @@ async function handle(action, id) {
     draftReminder = null;
     render();
   }
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  }[char]));
+}
+
+function safeFilename(value) {
+  return String(value || "classmate-project")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60) || "classmate-project";
+}
+
+function assignmentPayload(assignment) {
+  return {
+    title: assignment.title,
+    kind: assignment.kind,
+    theme: assignment.theme || "",
+    lead: assignment.lead || "You",
+    feedback: assignment.feedback || "Balanced",
+    sections: (assignment.sections || []).map((section) => ({
+      name: section.name,
+      owner: section.owner,
+      status: section.status,
+      comments: section.comments || 0,
+      suggestions: section.suggestions || 0
+    }))
+  };
+}
+
+function assignmentShareBrief(assignment) {
+  const payload = assignmentPayload(assignment);
+  return [
+    `${payload.title} (${payload.kind})`,
+    payload.theme ? `Look: ${payload.theme}` : "",
+    `Lead: ${payload.lead}`,
+    `Feedback: ${payload.feedback}`,
+    "",
+    ...payload.sections.map((section, index) => `${index + 1}. ${section.name} - ${section.status} - Owner: ${section.owner}`)
+  ].filter((line) => line !== "").join("\n");
+}
+
+function assignmentHtml(assignment) {
+  const payload = assignmentPayload(assignment);
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(payload.title)} - ClassMate</title>
+  <style>
+    body{font-family:Inter,Arial,sans-serif;margin:0;background:#f6f8fb;color:#182235}
+    main{max-width:880px;margin:auto;padding:28px}
+    h1{margin-bottom:4px}
+    .meta{color:#607089;margin-bottom:18px}
+    section{background:white;border:1px solid #dbe3ef;border-radius:10px;padding:16px;margin:12px 0}
+    strong{display:block;margin-bottom:4px}
+  </style>
+</head>
+<body><main>
+  <h1>${escapeHtml(payload.title)}</h1>
+  <p class="meta">${escapeHtml(payload.kind)}${payload.theme ? ` - ${escapeHtml(payload.theme)}` : ""} - Lead: ${escapeHtml(payload.lead)}</p>
+  ${payload.sections.map((section, index) => `<section><strong>${index + 1}. ${escapeHtml(section.name)}</strong><p>Status: ${escapeHtml(section.status)} - Owner: ${escapeHtml(section.owner)}</p><p>Comments: ${section.comments} - Suggested edits: ${section.suggestions}</p></section>`).join("")}
+</main></body></html>`;
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+}
+
+function filenameFromDisposition(header, fallback) {
+  const match = String(header || "").match(/filename="?([^"]+)"?/i);
+  return match?.[1] || fallback;
+}
+
+async function downloadAssignment(assignment) {
+  const fallbackName = `${safeFilename(assignment.title)}.html`;
+  try {
+    const response = await fetch("/api/export-assignment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignment: assignmentPayload(assignment) })
+    });
+    if (!response.ok) throw new Error("Export endpoint unavailable.");
+    const blob = await response.blob();
+    const filename = filenameFromDisposition(response.headers.get("Content-Disposition"), fallbackName);
+    downloadBlob(filename, blob);
+    state.install = { ...(state.install || {}), message: `Downloaded ${filename}.` };
+  } catch {
+    downloadBlob(fallbackName, new Blob([assignmentHtml(assignment)], { type: "text/html" }));
+    state.install = { ...(state.install || {}), message: `Downloaded ${fallbackName}. Install export libraries on the server for PPTX/DOCX.` };
+  }
+  save();
+  render();
 }
 
 async function promptGoogleSignIn() {
@@ -1502,6 +1902,8 @@ async function testNotification() {
   }
   const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
   if (permission === "granted") {
+    state.settings = { ...(state.settings || seed.settings), notifications: true };
+    save();
     new Notification("ClassMate test", { body: "Tomorrow: Math, Science Lab, and Art. Pack your materials." });
   } else {
     alert("Notification permission was not granted.");
