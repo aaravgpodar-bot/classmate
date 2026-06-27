@@ -1,12 +1,13 @@
-const STORAGE_KEY = "classmate.prototype.v23.final-remake";
-const DEVICE_WORKSPACE_KEY = "classmate.device.workspace";
-const DEVICE_WORKSPACE_SECRET_KEY = "classmate.device.workspace.secret";
+const STORAGE_KEY = "classmate.prototype.v24.google-only";
 const OLD_STORAGE_KEYS = [
   "classmate.prototype.v1",
   "classmate.prototype.v2.fresh",
   "classmate.prototype.v6.mixed-games",
   "classmate.prototype.v7.global-google",
-  "classmate.prototype.v22.clean-remake"
+  "classmate.prototype.v22.clean-remake",
+  "classmate.prototype.v23.final-remake",
+  "classmate.device.workspace",
+  "classmate.device.workspace.secret"
 ];
 
 const DASHBOARD_SECTIONS = ["recent", "tomorrow", "due", "library", "groups"];
@@ -24,7 +25,7 @@ const seed = {
   auth: { signedIn: false, email: "", picture: "", provider: "", role: "student" },
   install: { ready: false, installed: false, message: "" },
   sync: { status: "loading", message: "Preparing cloud sync..." },
-  version: "v23-final-remake",
+  version: "v24-google-only",
   view: "dashboard",
   dashboardMode: "time",
   dashboardSections: ["recent", "tomorrow", "due", "library", "groups"],
@@ -123,18 +124,21 @@ function load() {
 function clearOldClassMateStorage() {
   OLD_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   Object.keys(localStorage)
-    .filter((key) => key.startsWith("classmate.") && ![STORAGE_KEY, DEVICE_WORKSPACE_KEY, DEVICE_WORKSPACE_SECRET_KEY].includes(key))
+    .filter((key) => key.startsWith("classmate.") && key !== STORAGE_KEY)
     .forEach((key) => localStorage.removeItem(key));
 }
 
 function normalizeState(saved) {
   const base = structuredClone(seed);
   if (!saved || typeof saved !== "object") return base;
+  const auth = { ...base.auth, ...(saved.auth || {}) };
+  const signedIn = Boolean(auth.signedIn && auth.email && auth.provider === "Google");
   return {
     ...base,
     ...saved,
     version: seed.version,
-    auth: { ...base.auth, ...(saved.auth || {}) },
+    onboarded: signedIn,
+    auth: signedIn ? auth : base.auth,
     install: { ...base.install, ...(saved.install || {}) },
     sync: { ...base.sync, ...(saved.sync || {}) },
     user: { ...base.user, ...(saved.user || {}) },
@@ -146,40 +150,13 @@ function normalizeState(saved) {
   };
 }
 
-function getDeviceWorkspaceId() {
-  let id = localStorage.getItem(DEVICE_WORKSPACE_KEY);
-  if (!id) {
-    id = `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    localStorage.setItem(DEVICE_WORKSPACE_KEY, id);
-  }
-  return id;
-}
-
-function getDeviceWorkspaceSecret() {
-  let secret = localStorage.getItem(DEVICE_WORKSPACE_SECRET_KEY);
-  if (!secret) {
-    const bytes = new Uint8Array(24);
-    if (window.crypto?.getRandomValues) {
-      window.crypto.getRandomValues(bytes);
-      secret = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-    } else {
-      secret = `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-    }
-    localStorage.setItem(DEVICE_WORKSPACE_SECRET_KEY, secret);
-  }
-  return secret;
-}
-
 function workspaceId() {
   const email = state.auth?.signedIn && state.auth?.email ? state.auth.email.toLowerCase() : "";
-  return email ? `google:${email}` : getDeviceWorkspaceId();
+  return email ? `google:${email}` : "";
 }
 
 function workspaceAuthHeaders(includeJson = false) {
   const headers = includeJson ? { "Content-Type": "application/json" } : {};
-  if (!state.auth?.signedIn) {
-    headers["X-ClassMate-Workspace-Secret"] = getDeviceWorkspaceSecret();
-  }
   return headers;
 }
 
@@ -193,12 +170,19 @@ function cloudSafeState() {
 
 async function initCloudSync() {
   if (cloudLoadStarted) return;
+  if (!state.auth?.signedIn) {
+    cloudReady = false;
+    state.sync = { status: "idle", message: "Sign in with Google to sync your ClassMate workspace." };
+    saveLocalOnly();
+    return;
+  }
   cloudLoadStarted = true;
   await loadCloudWorkspace();
 }
 
 async function loadCloudWorkspace() {
   const id = workspaceId();
+  if (!id) return;
   try {
     const response = await fetch(`/api/workspace/${encodeURIComponent(id)}`, {
       credentials: "same-origin",
@@ -229,7 +213,7 @@ function saveLocalOnly() {
 }
 
 function queueCloudSave() {
-  if (!cloudReady) return;
+  if (!cloudReady || !state.auth?.signedIn) return;
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(() => {
     saveCloudWorkspace();
@@ -238,6 +222,7 @@ function queueCloudSave() {
 
 async function saveCloudWorkspace() {
   const id = workspaceId();
+  if (!id) return;
   const previousSync = state.sync || {};
   state.sync = { status: "saving", message: "Saving workspace to cloud..." };
   saveLocalOnly();
@@ -249,7 +234,7 @@ async function saveCloudWorkspace() {
       body: JSON.stringify({ state: cloudSafeState() })
     });
     if (!response.ok) throw new Error("Cloud save failed.");
-    state.sync = { status: "saved", message: state.auth?.signedIn ? "Saved to your Google workspace." : "Saved to this device workspace." };
+    state.sync = { status: "saved", message: "Saved to your Google workspace." };
   } catch {
     state.sync = { status: "error", message: "Could not save to cloud. Local copy is still saved." };
   }
@@ -368,7 +353,7 @@ function appRoot() {
 }
 
 function render() {
-  appRoot().innerHTML = state.onboarded ? shell() : onboarding();
+  appRoot().innerHTML = state.auth?.signedIn ? shell() : onboarding();
   bind();
   mountGoogleSignIn();
   flushPendingFocus();
@@ -409,23 +394,22 @@ function onboarding() {
       <section class="hero-copy">
         <div class="brand">${logoMarkup()}<div><h1>ClassMate</h1><p>Your school day, remembered.</p></div></div>
         <span class="eyebrow">Clean start</span>
-        <h1>School, sorted without the clutter.</h1>
-        <p>Plan your whole day, join classrooms, remember homework, return books, and use real AI tools when you need them.</p>
+        <h1>Sign in to start ClassMate.</h1>
+        <p>Use Google to create your student or teacher workspace, sync your school day, and keep your data tied to your account.</p>
         <div class="actions">
           <div id="googleSignIn" class="google-signin"></div>
           <button id="googleFallback" class="btn primary" data-action="google-sign-in">Student with Google</button>
           <button class="btn quiet" data-action="google-teacher-sign-in">Teacher with Google</button>
-          <button class="btn quiet" data-action="finish-onboarding">Guest workspace</button>
         </div>
-        <p class="muted light">All previous local ClassMate accounts and saved demo workspaces are cleared in this remake.</p>
+        <p class="muted light">All previous ClassMate demo accounts and local workspaces are cleared in this Google-only build.</p>
       </section>
       <section class="hero-card">
         <div class="start-preview remake-preview">
-          <div class="preview-top"><span class="chip gold">Fresh</span><strong>No current account</strong></div>
-          <div class="preview-row"><span>Student</span><strong>Google or guest</strong></div>
-          <div class="preview-row"><span>Teacher</span><strong>Create class codes</strong></div>
+          <div class="preview-top"><span class="chip gold">Fresh</span><strong>Sign in required</strong></div>
+          <div class="preview-row"><span>Student</span><strong>Google workspace</strong></div>
+          <div class="preview-row"><span>Teacher</span><strong>Google + class codes</strong></div>
           <div class="preview-row"><span>Download</span><strong>Phone + PC</strong></div>
-          <div class="preview-row"><span>Data</span><strong>Starts empty</strong></div>
+          <div class="preview-row"><span>Data</span><strong>Fresh account start</strong></div>
         </div>
       </section>
     </main>
@@ -444,7 +428,7 @@ function shell() {
   return `
     <div class="shell">
       <aside class="sidebar">
-        <div class="brand sidebar-brand">${logoMarkup()}<div><h1>ClassMate</h1><p>${state.auth?.signedIn ? state.auth.email : `${roleLabel()} guest workspace`}</p></div></div>
+        <div class="brand sidebar-brand">${logoMarkup()}<div><h1>ClassMate</h1><p>${state.auth.email}</p></div></div>
         <nav class="nav grouped-nav">${tabGroups.map(navGroup).join("")}</nav>
       </aside>
       <main class="main">
@@ -1407,14 +1391,6 @@ async function handleTimetablePhoto(event) {
 }
 
 async function handle(action, id) {
-  if (action === "finish-onboarding") {
-    pendingAuthRole = "student";
-    setState({ onboarded: true, view: "dashboard", auth: { ...state.auth, signedIn: false, email: "", picture: "", provider: "Guest", role: "student" } });
-  }
-  if (action === "teacher-start") {
-    pendingAuthRole = "teacher";
-    setState({ onboarded: true, view: "classrooms", auth: { ...state.auth, signedIn: false, email: "", picture: "", provider: "Guest", role: "teacher" } });
-  }
   if (action === "finish-tutorial") setState({ tutorialDone: true });
   if (action === "google-sign-in") {
     pendingAuthRole = "student";
@@ -1423,10 +1399,6 @@ async function handle(action, id) {
   if (action === "google-teacher-sign-in") {
     pendingAuthRole = "teacher";
     await promptGoogleSignIn();
-  }
-  if (action === "teacher-guest") {
-    pendingAuthRole = "teacher";
-    setState({ onboarded: true, view: "classrooms", auth: { ...state.auth, signedIn: false, email: "", picture: "", provider: "Guest", role: "teacher" } });
   }
   if (action === "set-teacher-role") {
     pendingAuthRole = "teacher";
@@ -1901,29 +1873,30 @@ async function handle(action, id) {
   }
   if (action === "sign-out") {
     await fetch("/api/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
-    state.auth = { ...seed.auth, provider: "Guest", role: state.auth?.role || "student" };
+    state.auth = { ...seed.auth, role: state.auth?.role || "student" };
+    state.onboarded = false;
     cloudLoadStarted = false;
     cloudReady = false;
     saveLocalOnly();
-    await loadCloudWorkspace();
+    render();
   }
   if (action === "test-notification") testNotification();
   if (action === "reset") {
     await deleteCloudWorkspace();
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(DEVICE_WORKSPACE_KEY);
-    localStorage.removeItem(DEVICE_WORKSPACE_SECRET_KEY);
+    localStorage.removeItem("classmate.device.workspace");
+    localStorage.removeItem("classmate.device.workspace.secret");
     clearOldClassMateStorage();
     state = structuredClone(seed);
     cloudLoadStarted = false;
     cloudReady = false;
     draftReminder = null;
     render();
-    await loadCloudWorkspace();
   }
 }
 
 async function deleteCloudWorkspace() {
+  if (!workspaceId()) return;
   try {
     await fetch(`/api/workspace/${encodeURIComponent(workspaceId())}`, {
       method: "DELETE",
@@ -2048,7 +2021,7 @@ async function promptGoogleSignIn() {
   if (clientId && window.google?.accounts?.id) {
     google.accounts.id.prompt();
   } else {
-    alert("Google Sign-In needs GOOGLE_CLIENT_ID set on the server. No local account was created. You can use Guest workspace until Google is configured.");
+    alert("Google Sign-In needs GOOGLE_CLIENT_ID set on the server before ClassMate can be used.");
   }
 }
 

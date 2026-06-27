@@ -1,6 +1,5 @@
 import json
 import io
-import hmac
 import os
 import re
 import sqlite3
@@ -18,6 +17,7 @@ from ai_helpers import ai_extract_timetable, ai_game_questions, ai_paraphrase, a
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("CLASSMATE_DATA_DIR", BASE_DIR / "data"))
 DB_PATH = DATA_DIR / "classmate.sqlite3"
+ACCOUNT_RESET_VERSION = "2026-06-27-google-only"
 PUBLIC_FILES = {
     "app.js",
     "index.html",
@@ -226,6 +226,15 @@ def init_db():
             connection.execute("ALTER TABLE workspaces ADD COLUMN workspace_secret TEXT NOT NULL DEFAULT ''")
 
 
+def reset_saved_accounts_once():
+    marker = DATA_DIR / f".accounts-reset-{ACCOUNT_RESET_VERSION}"
+    if marker.exists():
+        return
+    with sqlite3.connect(DB_PATH) as connection:
+        connection.execute("DELETE FROM workspaces")
+    marker.write_text("ClassMate saved workspaces cleared for Google-only sign-in.\n", encoding="utf-8")
+
+
 @contextmanager
 def db():
     connection = sqlite3.connect(DB_PATH)
@@ -245,10 +254,6 @@ def workspace_owner(workspace_id):
     return "guest", workspace_id
 
 
-def request_workspace_secret():
-    return str(request.headers.get("X-ClassMate-Workspace-Secret", "")).strip()
-
-
 def authorize_workspace(workspace_id, allow_create):
     owner_kind, owner_id = workspace_owner(workspace_id)
     if owner_kind == "google":
@@ -256,22 +261,11 @@ def authorize_workspace(workspace_id, allow_create):
             return jsonify({"error": "Sign in with the matching Google account to access this workspace."}), 403
         return None
 
-    secret = request_workspace_secret()
-    if not secret:
-        return jsonify({"error": "Workspace secret is required for guest sync."}), 403
-    with db() as connection:
-        row = connection.execute(
-            "SELECT workspace_secret FROM workspaces WHERE workspace_id = ?",
-            (workspace_id,),
-        ).fetchone()
-    if not row:
-        return None if allow_create else (jsonify({"error": "Workspace not found."}), 404)
-    if not hmac.compare_digest(row[0] or "", secret):
-        return jsonify({"error": "This device is not allowed to access that guest workspace."}), 403
-    return None
+    return jsonify({"error": "Google sign-in is required for ClassMate workspaces."}), 403
 
 
 init_db()
+reset_saved_accounts_once()
 
 
 def clean_workspace_id(value):
@@ -295,7 +289,7 @@ def load_workspace(workspace_id):
 def save_workspace_state(workspace_id, state):
     state_json = json.dumps(state, separators=(",", ":"), ensure_ascii=False)
     owner_kind, owner_id = workspace_owner(workspace_id)
-    workspace_secret = request_workspace_secret() if owner_kind == "guest" else ""
+    workspace_secret = ""
     with db() as connection:
         connection.execute(
         """

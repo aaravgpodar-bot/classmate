@@ -29,7 +29,7 @@ Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, present
 - PWA manifest and service worker.
 - Server-side cloud workspace sync using SQLite.
   - Signed-in Google users sync by email workspace.
-  - Guest users sync to a generated device workspace id.
+  - Google sign-in is required before a workspace can be opened or synced.
   - Set `CLASSMATE_DATA_DIR` in production to keep the SQLite database in persistent storage.
 - First-run onboarding with no default contacts, groups, reminders, books, or projects.
 - Timetable photo upload with OpenAI Vision extraction for full-week school, homework, activity, travel, or study blocks.
@@ -52,7 +52,7 @@ Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, present
 - Interactive comments, suggested edits, and project-lead reassignment counters.
 - Notification settings with browser permission and test notification.
 - ClassQuest arcade: type any subject, choose a timed game style, generate 10 OpenAI-backed rounds, and play different round types including quiz battle, true/false, typed answer, and best-move choices with typo-tolerant answer analysis.
-- Google sign-in/sign-up wiring for student and teacher roles, plus guest mode while `GOOGLE_CLIENT_ID` is not configured.
+- Google sign-in/sign-up wiring for student and teacher roles. `GOOGLE_CLIENT_ID` must be configured before students or teachers can enter the app.
 - PWA install support with refreshed app icon and service-worker caching for phone, desktop, and tablet installs.
 
 ## Next Build Step
