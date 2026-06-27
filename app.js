@@ -1,4 +1,4 @@
-const STORAGE_KEY = "classmate.prototype.v24.google-only";
+const STORAGE_KEY = "classmate.prototype.v25.fresh-local";
 const OLD_STORAGE_KEYS = [
   "classmate.prototype.v1",
   "classmate.prototype.v2.fresh",
@@ -6,6 +6,7 @@ const OLD_STORAGE_KEYS = [
   "classmate.prototype.v7.global-google",
   "classmate.prototype.v22.clean-remake",
   "classmate.prototype.v23.final-remake",
+  "classmate.prototype.v24.google-only",
   "classmate.device.workspace",
   "classmate.device.workspace.secret"
 ];
@@ -22,10 +23,10 @@ const GAME_STYLES = [
 const seed = {
   onboarded: false,
   tutorialDone: false,
-  auth: { signedIn: false, email: "", picture: "", provider: "", role: "student" },
+  auth: { signedIn: false, email: "", picture: "", provider: "Device", role: "student" },
   install: { ready: false, installed: false, message: "" },
-  sync: { status: "loading", message: "Preparing cloud sync..." },
-  version: "v24-google-only",
+  sync: { status: "idle", message: "Saved on this device." },
+  version: "v25-fresh-local",
   view: "dashboard",
   dashboardMode: "time",
   dashboardSections: ["recent", "tomorrow", "due", "library", "groups"],
@@ -102,7 +103,6 @@ const seed = {
 
 let state = load();
 let draftReminder = null;
-let googleClientId = "";
 let installPromptEvent = null;
 let pendingAuthRole = "student";
 let pendingFocusSelector = "";
@@ -132,13 +132,13 @@ function normalizeState(saved) {
   const base = structuredClone(seed);
   if (!saved || typeof saved !== "object") return base;
   const auth = { ...base.auth, ...(saved.auth || {}) };
-  const signedIn = Boolean(auth.signedIn && auth.email && auth.provider === "Google");
+  const onboarded = Boolean(saved.onboarded);
   return {
     ...base,
     ...saved,
     version: seed.version,
-    onboarded: signedIn,
-    auth: signedIn ? auth : base.auth,
+    onboarded,
+    auth: onboarded ? { ...auth, provider: auth.provider || "Device" } : base.auth,
     install: { ...base.install, ...(saved.install || {}) },
     sync: { ...base.sync, ...(saved.sync || {}) },
     user: { ...base.user, ...(saved.user || {}) },
@@ -151,8 +151,7 @@ function normalizeState(saved) {
 }
 
 function workspaceId() {
-  const email = state.auth?.signedIn && state.auth?.email ? state.auth.email.toLowerCase() : "";
-  return email ? `google:${email}` : "";
+  return "";
 }
 
 function workspaceAuthHeaders(includeJson = false) {
@@ -170,14 +169,9 @@ function cloudSafeState() {
 
 async function initCloudSync() {
   if (cloudLoadStarted) return;
-  if (!state.auth?.signedIn) {
-    cloudReady = false;
-    state.sync = { status: "idle", message: "Sign in with Google to sync your ClassMate workspace." };
-    saveLocalOnly();
-    return;
-  }
-  cloudLoadStarted = true;
-  await loadCloudWorkspace();
+  cloudReady = false;
+  state.sync = { status: "idle", message: "Saved on this device." };
+  saveLocalOnly();
 }
 
 async function loadCloudWorkspace() {
@@ -213,7 +207,7 @@ function saveLocalOnly() {
 }
 
 function queueCloudSave() {
-  if (!cloudReady || !state.auth?.signedIn) return;
+  if (!cloudReady) return;
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(() => {
     saveCloudWorkspace();
@@ -234,7 +228,7 @@ async function saveCloudWorkspace() {
       body: JSON.stringify({ state: cloudSafeState() })
     });
     if (!response.ok) throw new Error("Cloud save failed.");
-    state.sync = { status: "saved", message: "Saved to your Google workspace." };
+    state.sync = { status: "saved", message: "Saved to your workspace." };
   } catch {
     state.sync = { status: "error", message: "Could not save to cloud. Local copy is still saved." };
   }
@@ -353,9 +347,8 @@ function appRoot() {
 }
 
 function render() {
-  appRoot().innerHTML = state.auth?.signedIn ? shell() : onboarding();
+  appRoot().innerHTML = state.onboarded ? shell() : onboarding();
   bind();
-  mountGoogleSignIn();
   flushPendingFocus();
   setupGameTimer();
 }
@@ -394,20 +387,19 @@ function onboarding() {
       <section class="hero-copy">
         <div class="brand">${logoMarkup()}<div><h1>ClassMate</h1><p>Your school day, remembered.</p></div></div>
         <span class="eyebrow">Clean start</span>
-        <h1>Sign in to start ClassMate.</h1>
-        <p>Use Google to create your student or teacher workspace, sync your school day, and keep your data tied to your account.</p>
+        <h1>Start with a clean ClassMate.</h1>
+        <p>Choose student or teacher mode, then build your school day from a blank workspace with no old demo accounts.</p>
         <div class="actions">
-          <div id="googleSignIn" class="google-signin"></div>
-          <button id="googleFallback" class="btn primary" data-action="google-sign-in">Student with Google</button>
-          <button class="btn quiet" data-action="google-teacher-sign-in">Teacher with Google</button>
+          <button class="btn primary" data-action="start-student">Start as Student</button>
+          <button class="btn quiet" data-action="start-teacher">Start as Teacher</button>
         </div>
-        <p class="muted light">All previous ClassMate demo accounts and local workspaces are cleared in this Google-only build.</p>
+        <p class="muted light">All previous ClassMate demo accounts and local workspaces are cleared in this fresh build.</p>
       </section>
       <section class="hero-card">
         <div class="start-preview remake-preview">
-          <div class="preview-top"><span class="chip gold">Fresh</span><strong>Sign in required</strong></div>
-          <div class="preview-row"><span>Student</span><strong>Google workspace</strong></div>
-          <div class="preview-row"><span>Teacher</span><strong>Google + class codes</strong></div>
+          <div class="preview-top"><span class="chip gold">Fresh</span><strong>No account required</strong></div>
+          <div class="preview-row"><span>Student</span><strong>Blank planner</strong></div>
+          <div class="preview-row"><span>Teacher</span><strong>Class codes</strong></div>
           <div class="preview-row"><span>Download</span><strong>Phone + PC</strong></div>
           <div class="preview-row"><span>Data</span><strong>Fresh account start</strong></div>
         </div>
@@ -428,7 +420,7 @@ function shell() {
   return `
     <div class="shell">
       <aside class="sidebar">
-        <div class="brand sidebar-brand">${logoMarkup()}<div><h1>ClassMate</h1><p>${state.auth.email}</p></div></div>
+        <div class="brand sidebar-brand">${logoMarkup()}<div><h1>ClassMate</h1><p>${roleLabel()} workspace</p></div></div>
         <nav class="nav grouped-nav">${tabGroups.map(navGroup).join("")}</nav>
       </aside>
       <main class="main">
@@ -1099,64 +1091,6 @@ function renderGameRound(question) {
   </div>`;
 }
 
-async function loadGoogleConfig() {
-  if (googleClientId) return googleClientId;
-  try {
-    const response = await fetch("/api/config");
-    const data = await response.json();
-    googleClientId = data.googleClientId || "";
-  } catch {
-    googleClientId = "";
-  }
-  return googleClientId;
-}
-
-async function mountGoogleSignIn() {
-  const target = document.querySelector("#googleSignIn");
-  const fallback = document.querySelector("#googleFallback");
-  if (!target || state.auth?.signedIn) return;
-  const clientId = await loadGoogleConfig();
-  if (!clientId || !window.google?.accounts?.id) {
-    target.innerHTML = "";
-    return;
-  }
-  if (fallback) fallback.style.display = "none";
-  google.accounts.id.initialize({
-    client_id: clientId,
-    callback: handleGoogleCredential
-  });
-  google.accounts.id.renderButton(target, {
-    theme: "outline",
-    size: "large",
-    shape: "rectangular",
-    text: "continue_with",
-    width: 240
-  });
-}
-
-async function handleGoogleCredential(response) {
-  try {
-    const result = await fetch("/api/google-login", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credential: response.credential, role: pendingAuthRole || "student" })
-    });
-    const data = await result.json().catch(() => ({}));
-    if (!result.ok || !data.user) throw new Error(data.error || "Google sign-in failed.");
-    state.auth = { signedIn: true, email: data.user.email || "", picture: data.user.picture || "", provider: "Google", role: pendingAuthRole || "student" };
-    state.user = { ...state.user, name: data.user.name || "Student" };
-    state.onboarded = true;
-    state.view = state.auth.role === "teacher" ? "classrooms" : "dashboard";
-    saveLocalOnly();
-    cloudLoadStarted = false;
-    cloudReady = false;
-    await loadCloudWorkspace();
-  } catch (error) {
-    alert(error.message || "Google sign-in could not finish.");
-  }
-}
-
 function normalizeSubject(value) {
   return (value || "General Knowledge").trim().replace(/\s+/g, " ").slice(0, 40) || "General Knowledge";
 }
@@ -1260,12 +1194,10 @@ function settings() {
     ${header("Settings", "Dashboard preferences, reminder defaults, account cleanup, and browser notification test.", `<button class="btn warn" data-action="reset">Clear local workspace</button>`)}
     <section class="grid">
       <div class="panel span-12">
-        <div class="row"><div><h3>Account</h3><span class="muted">${state.auth?.signedIn ? `Signed in with Google as ${state.auth.email}` : "No signed-in account is saved on this device."}</span></div><span class="chip ${state.auth?.signedIn ? "green" : "gold"}">${state.auth?.signedIn ? "Google" : "Guest"}</span></div>
+        <div class="row"><div><h3>Workspace</h3><span class="muted">This fresh workspace is saved on this device.</span></div><span class="chip gold">${roleLabel()}</span></div>
         <div class="actions">
-          <div id="googleSignIn" class="google-signin"></div>
-          <button id="googleFallback" class="btn primary" data-action="google-sign-in">Student Google sign-in</button>
-          <button class="btn" data-action="google-teacher-sign-in">Teacher Google sign-in</button>
-          ${state.auth?.signedIn ? `<button class="btn" data-action="sign-out">Sign out</button>` : ""}
+          <button class="btn" data-action="set-student-role">Student mode</button>
+          <button class="btn" data-action="set-teacher-role">Teacher mode</button>
           <button class="btn warn" data-action="reset">Delete all local data</button>
         </div>
       </div>
@@ -1392,23 +1324,25 @@ async function handleTimetablePhoto(event) {
 
 async function handle(action, id) {
   if (action === "finish-tutorial") setState({ tutorialDone: true });
-  if (action === "google-sign-in") {
-    pendingAuthRole = "student";
-    await promptGoogleSignIn();
-  }
-  if (action === "google-teacher-sign-in") {
-    pendingAuthRole = "teacher";
-    await promptGoogleSignIn();
+  if (action === "start-student" || action === "start-teacher") {
+    const role = action === "start-teacher" ? "teacher" : "student";
+    pendingAuthRole = role;
+    state.auth = { signedIn: false, email: "", picture: "", provider: "Device", role };
+    state.onboarded = true;
+    state.view = role === "teacher" ? "classrooms" : "dashboard";
+    state.sync = { status: "idle", message: "Saved on this device." };
+    saveLocalOnly();
+    render();
   }
   if (action === "set-teacher-role") {
     pendingAuthRole = "teacher";
-    state.auth = { ...state.auth, role: "teacher" };
+    state.auth = { ...state.auth, provider: "Device", role: "teacher" };
     save();
     render();
   }
   if (action === "set-student-role") {
     pendingAuthRole = "student";
-    state.auth = { ...state.auth, role: "student" };
+    state.auth = { ...state.auth, provider: "Device", role: "student" };
     save();
     render();
   }
@@ -2014,15 +1948,6 @@ async function downloadAssignment(assignment) {
   }
   save();
   render();
-}
-
-async function promptGoogleSignIn() {
-  const clientId = await loadGoogleConfig();
-  if (clientId && window.google?.accounts?.id) {
-    google.accounts.id.prompt();
-  } else {
-    alert("Google Sign-In needs GOOGLE_CLIENT_ID set on the server before ClassMate can be used.");
-  }
 }
 
 async function testNotification() {

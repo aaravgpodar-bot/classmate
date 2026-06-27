@@ -1,4 +1,4 @@
-const CACHE_NAME = "classmate-final-v24-google-only";
+const CACHE_NAME = "classmate-final-v25-fresh-local";
 const APP_SHELL = [
   "/",
   "/index.html",

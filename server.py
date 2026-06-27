@@ -3,9 +3,6 @@ import io
 import os
 import re
 import sqlite3
-import urllib.error
-import urllib.parse
-import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -17,7 +14,7 @@ from ai_helpers import ai_extract_timetable, ai_game_questions, ai_paraphrase, a
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("CLASSMATE_DATA_DIR", BASE_DIR / "data"))
 DB_PATH = DATA_DIR / "classmate.sqlite3"
-ACCOUNT_RESET_VERSION = "2026-06-27-google-only"
+ACCOUNT_RESET_VERSION = "2026-06-27-fresh-local"
 PUBLIC_FILES = {
     "app.js",
     "index.html",
@@ -44,30 +41,6 @@ def index():
 @app.get("/health")
 def health():
     return jsonify({"status": "ok", "app": "ClassMate"})
-
-
-@app.get("/api/config")
-def config():
-    return jsonify({"googleClientId": os.environ.get("GOOGLE_CLIENT_ID", "")})
-
-
-@app.post("/api/google-login")
-def google_login():
-    body = request.get_json(silent=True) or {}
-    credential = str(body.get("credential", "")).strip()
-    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
-    if not client_id:
-        return jsonify({"error": "GOOGLE_CLIENT_ID is not configured on the server."}), 503
-    if not credential:
-        return jsonify({"error": "Google credential is required."}), 400
-    try:
-        user = verify_google_credential(credential, client_id)
-    except RuntimeError as error:
-        return jsonify({"error": str(error)}), 401
-    session["workspace_id"] = f"google:{user['email'].lower()}"
-    session["email"] = user["email"].lower()
-    session["role"] = str(body.get("role", "student")).strip()[:20] or "student"
-    return jsonify({"user": user, "workspaceId": session["workspace_id"]})
 
 
 @app.post("/api/logout")
@@ -232,7 +205,7 @@ def reset_saved_accounts_once():
         return
     with sqlite3.connect(DB_PATH) as connection:
         connection.execute("DELETE FROM workspaces")
-    marker.write_text("ClassMate saved workspaces cleared for Google-only sign-in.\n", encoding="utf-8")
+    marker.write_text("ClassMate saved workspaces cleared for the fresh local build.\n", encoding="utf-8")
 
 
 @contextmanager
@@ -249,19 +222,11 @@ def db():
 
 
 def workspace_owner(workspace_id):
-    if workspace_id.startswith("google:"):
-        return "google", workspace_id.split(":", 1)[1].lower()
     return "guest", workspace_id
 
 
 def authorize_workspace(workspace_id, allow_create):
-    owner_kind, owner_id = workspace_owner(workspace_id)
-    if owner_kind == "google":
-        if session.get("workspace_id") != workspace_id:
-            return jsonify({"error": "Sign in with the matching Google account to access this workspace."}), 403
-        return None
-
-    return jsonify({"error": "Google sign-in is required for ClassMate workspaces."}), 403
+    return jsonify({"error": "Cloud workspaces are disabled in this fresh local build."}), 403
 
 
 init_db()
@@ -307,24 +272,6 @@ def save_workspace_state(workspace_id, state):
             """,
             (workspace_id, owner_kind, owner_id, workspace_secret, state_json),
         )
-
-
-def verify_google_credential(credential, client_id):
-    url = "https://oauth2.googleapis.com/tokeninfo?id_token=" + urllib.parse.quote(credential)
-    try:
-      with urllib.request.urlopen(url, timeout=10) as response:
-          payload = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, json.JSONDecodeError) as error:
-      raise RuntimeError("Could not verify Google sign-in.") from error
-    if payload.get("aud") != client_id:
-      raise RuntimeError("Google sign-in was not issued for this ClassMate app.")
-    if payload.get("email_verified") not in (True, "true", "True"):
-      raise RuntimeError("Google email is not verified.")
-    return {
-      "name": payload.get("name") or payload.get("email", "").split("@")[0] or "Student",
-      "email": payload.get("email", ""),
-      "picture": payload.get("picture", ""),
-    }
 
 
 def safe_filename(value):

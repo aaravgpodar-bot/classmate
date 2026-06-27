@@ -1,6 +1,6 @@
 # ClassMate Prototype
 
-ClassMate is a student-first AI planner prototype. This build is a PWA-style app with local browser state, Flask-backed cloud workspace sync, and AI-backed study endpoints.
+ClassMate is a student-first AI planner prototype. This build is a PWA-style app with fresh local browser state, a Flask backend for AI/export endpoints, and no preloaded accounts or demo data.
 
 ## Run
 
@@ -27,11 +27,11 @@ Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, present
 ## Included
 
 - PWA manifest and service worker.
-- Server-side cloud workspace sync using SQLite.
-  - Signed-in Google users sync by email workspace.
-  - Google sign-in is required before a workspace can be opened or synced.
-  - Set `CLASSMATE_DATA_DIR` in production to keep the SQLite database in persistent storage.
-- First-run onboarding with no default contacts, groups, reminders, books, or projects.
+- Fresh local workspace startup.
+  - No Google Client ID is required.
+  - No default accounts, contacts, groups, reminders, books, or projects are preloaded.
+  - Set `CLASSMATE_DATA_DIR` in production if server-side workspace storage is re-enabled later.
+- First-run onboarding with student and teacher modes.
 - Timetable photo upload with OpenAI Vision extraction for full-week school, homework, activity, travel, or study blocks.
 - Dashboard with most-recent/urgent focus.
 - Time/type dashboard toggle and customizable sections.
@@ -52,7 +52,7 @@ Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, present
 - Interactive comments, suggested edits, and project-lead reassignment counters.
 - Notification settings with browser permission and test notification.
 - ClassQuest arcade: type any subject, choose a timed game style, generate 10 OpenAI-backed rounds, and play different round types including quiz battle, true/false, typed answer, and best-move choices with typo-tolerant answer analysis.
-- Google sign-in/sign-up wiring for student and teacher roles. `GOOGLE_CLIENT_ID` must be configured before students or teachers can enter the app.
+- Student/teacher startup without account sign-in, so the app works immediately on the public PythonAnywhere link.
 - PWA install support with refreshed app icon and service-worker caching for phone, desktop, and tablet installs.
 
 ## Next Build Step
