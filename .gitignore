@@ -5,3 +5,5 @@ __pycache__/
 .DS_Store
 data/
 *.sqlite3
+node_modules/
+.next/
