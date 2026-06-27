@@ -974,3 +974,18 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* AI Study Coach */
+.coach-encouragement {
+  border-left: 4px solid #0e6f74;
+  background: rgba(14, 111, 116, 0.08);
+}
+.coach-steps {
+  margin: 8px 0 4px;
+  padding-left: 22px;
+  display: grid;
+  gap: 10px;
+}
+.coach-steps li {
+  line-height: 1.45;
+}

@@ -8,7 +8,13 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 
-from ai_helpers import ai_extract_timetable, ai_game_questions, ai_paraphrase, ai_presentation_plan
+from ai_helpers import (
+    ai_extract_timetable,
+    ai_game_questions,
+    ai_paraphrase,
+    ai_presentation_plan,
+    ai_study_coach,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -99,6 +105,22 @@ def generate_game():
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 503
     return jsonify({"subject": subject, "source": "openai", "questions": questions})
+
+
+@app.post("/api/study-coach")
+def study_coach():
+    body = request.get_json(silent=True) or {}
+    subject = str(body.get("subject", "")).strip()[:80]
+    stuck_on = str(body.get("stuckOn", "")).strip()[:600]
+    if not subject:
+        return jsonify({"error": "Tell ClassMate which subject you need help with."}), 400
+    if not stuck_on:
+        return jsonify({"error": "Tell ClassMate what you are stuck on."}), 400
+    try:
+        plan = ai_study_coach(subject, stuck_on)
+    except RuntimeError as error:
+        return jsonify({"error": str(error)}), 503
+    return jsonify({"subject": subject, "source": "openai", "coach": plan})
 
 
 @app.post("/api/generate-presentation")
@@ -338,5 +360,5 @@ def build_docx_export(title, kind, assignment, sections):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5177, debug=True)
+    app.run(host="127.0.0.1", port=5177, debug=False)
 

@@ -24,6 +24,51 @@ python local_ai_server.py
 
 Set `OPENAI_API_KEY` before running. Without it, AI games, paraphrasing, presentation ideas, and timetable extraction will show setup-needed messages instead of mock results.
 
+## AI feature
+
+**AI Study Coach** (new) — a real study mentor powered by OpenAI `gpt-5.4-nano`.
+
+Open the **Study Coach** tab (under "Create" in the sidebar / bottom nav), type the
+subject you need help with and what you are stuck on, then press **Get my study
+plan**. ClassMate sends that to the backend, which calls `gpt-5.4-nano` (OpenAI
+Responses API) and returns:
+
+- a short encouraging message, and
+- a concrete, doable 3–5 step study plan you can start today.
+
+How it is wired:
+
+- Frontend: the `coach` view in `app.js` posts to `/api/study-coach`.
+- Backend: `POST /api/study-coach` in `server.py` (also added to `local_ai_server.py`)
+  calls `ai_study_coach(subject, stuck_on)` in `ai_helpers.py`.
+- `ai_study_coach` uses the OpenAI Python SDK Responses API
+  (`reasoning={"effort":"low"}`, `text={"verbosity":"low"}`), with a pure-`urllib`
+  REST fallback so it still works if the SDK is not installed.
+
+Setup:
+
+1. Create a `.env` in this folder (already gitignored) with:
+
+   ```text
+   OPENAI_API_KEY=sk-...your key...
+   OPENAI_MODEL=gpt-5.4-nano
+   ```
+
+2. Install requirements (includes `openai>=1.99`):
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Run the Flask backend so the key stays server-side:
+
+   ```bash
+   python server.py
+   ```
+
+   Then open `http://127.0.0.1:5177/` and use the Study Coach tab. The API key is
+   only read on the server from `.env`; it is never sent to the browser.
+
 ## Included
 
 - PWA manifest and service worker.

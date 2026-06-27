@@ -88,6 +88,13 @@ const seed = {
     answerReview: "",
     lastResult: ""
   },
+  coach: {
+    subject: "",
+    stuckOn: "",
+    status: "idle",
+    error: "",
+    result: null
+  },
   settings: {
     eveningPack: true,
     morningSummary: true,
@@ -146,6 +153,7 @@ function normalizeState(saved) {
     presentationAi: { ...base.presentationAi, ...(saved.presentationAi || {}) },
     paraphraseAi: { ...base.paraphraseAi, ...(saved.paraphraseAi || {}) },
     games: { ...base.games, ...(saved.games || {}) },
+    coach: { ...base.coach, ...(saved.coach || {}) },
     settings: { ...base.settings, ...(saved.settings || {}) }
   };
 }
@@ -414,7 +422,7 @@ function shell() {
   const tabGroups = [
     ["Today", [byId.dashboard, byId.activities, byId.timetable, byId.reminders]],
     ["School", [byId.library, byId.classrooms, byId.groups]],
-    ["Create", [byId.studio, byId.games]],
+    ["Create", [byId.studio, byId.games, byId.coach]],
     ["App", [byId.settings]]
   ];
   return `
@@ -442,6 +450,7 @@ function navTabs() {
     ["library", "Library", state.library.length],
     ["classrooms", "Classrooms", state.classrooms.length],
     ["games", "Games", ""],
+    ["coach", "Study Coach", ""],
     ["groups", "Groups", state.groups.reduce((sum, g) => sum + g.unread, 0)],
     ["studio", "Studio", ""],
     ["settings", "Settings", ""]
@@ -471,6 +480,7 @@ function viewContent() {
     groups,
     studio,
     games,
+    coach,
     settings
   };
   return `${appNotice()}${(views[state.view] || dashboard)()}`;
@@ -975,6 +985,39 @@ function games() {
   `;
 }
 
+function coach() {
+  const c = state.coach || {};
+  const result = c.result;
+  return `
+    ${header("Study Coach", "Tell ClassMate your subject and what you are stuck on. AI gives you a pep talk and a short, doable plan.", "")}
+    <section class="grid">
+      <div class="panel span-4">
+        <h3>Ask the Study Coach</h3>
+        <div class="form">
+          <div class="field"><label>Subject</label><input id="coachSubject" value="${escapeHtml(c.subject || "")}" placeholder="e.g. Maths, History, Biology"></div>
+          <div class="field"><label>What are you stuck on?</label><textarea id="coachStuck" rows="4" placeholder="e.g. I keep mixing up the steps for long division">${escapeHtml(c.stuckOn || "")}</textarea></div>
+          <button class="btn primary" data-action="start-coach" ${c.status === "loading" ? "disabled" : ""}>${c.status === "loading" ? "Coaching..." : "Get my study plan"}</button>
+          <p id="coachFormMessage" class="form-message"></p>
+        </div>
+      </div>
+      <div class="panel span-8">
+        ${c.status === "idle" && !result ? `<div class="empty"><strong>Stuck on something?</strong><br>Type your subject and the thing you are stuck on. ClassMate's AI coach replies with a short encouraging note and a 3-5 step plan you can start today.</div>` : ""}
+        ${c.status === "loading" ? `<div class="game-card"><h3>Thinking it through...</h3><p class="muted">ClassMate is building an encouraging, doable plan for ${escapeHtml(c.subject || "your subject")}.</p><div class="game-meter"><span style="width:68%"></span></div></div>` : ""}
+        ${c.status === "error" ? `<div class="game-card"><h3>AI setup needed</h3><p class="muted">${escapeHtml(c.error || "Set OPENAI_API_KEY on the server, then try again.")}</p></div>` : ""}
+        ${result ? `
+          <div class="row"><h3>${escapeHtml(c.subject || "Your plan")}</h3><span class="chip green">OpenAI</span></div>
+          <div class="item coach-encouragement"><strong>${escapeHtml(result.encouragement || "")}</strong></div>
+          <h3>Your plan</h3>
+          <ol class="coach-steps">
+            ${(result.steps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+          </ol>
+          <div class="actions"><button class="btn" data-action="start-coach">Get another plan</button></div>
+        ` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function scrambleWord(word) {
   return word.split("").sort(() => Math.random() - 0.5).join("");
 }
@@ -1144,6 +1187,20 @@ async function paraphraseWithAi(text, tone) {
   if (!response.ok) throw new Error(data.error || "Real AI is not available.");
   if (!data.result || !data.result.paraphrased) throw new Error("OpenAI returned an incomplete paraphrase.");
   return data.result;
+}
+
+async function studyCoachWithAi(subject, stuckOn) {
+  const response = await fetch("/api/study-coach", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subject, stuckOn })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Real AI is not available.");
+  if (!data.coach || !Array.isArray(data.coach.steps) || data.coach.steps.length < 3) {
+    throw new Error("OpenAI returned an incomplete study plan.");
+  }
+  return data.coach;
 }
 
 async function extractTimetableWithAi(image) {
@@ -1768,6 +1825,32 @@ async function handle(action, id) {
         status: "error",
         error: error.message || "Real AI is unavailable."
       };
+    }
+    save();
+    render();
+  }
+  if (action === "start-coach") {
+    const subject = (document.querySelector("#coachSubject")?.value || state.coach.subject || "").trim().slice(0, 80);
+    const stuckOn = (document.querySelector("#coachStuck")?.value || state.coach.stuckOn || "").trim().slice(0, 600);
+    clearValidation(".form");
+    if (!subject) {
+      setFormMessage("coachFormMessage", "Add the subject you need help with.");
+      focusAfterRender("#coachSubject");
+      return;
+    }
+    if (!stuckOn) {
+      setFormMessage("coachFormMessage", "Tell ClassMate what you are stuck on.");
+      focusAfterRender("#coachStuck");
+      return;
+    }
+    state.coach = { ...state.coach, subject, stuckOn, status: "loading", error: "", result: null };
+    save();
+    render();
+    try {
+      const coachPlan = await studyCoachWithAi(subject, stuckOn);
+      state.coach = { ...state.coach, status: "ready", error: "", result: coachPlan };
+    } catch (error) {
+      state.coach = { ...state.coach, status: "error", error: error.message || "Real AI is unavailable.", result: null };
     }
     save();
     render();

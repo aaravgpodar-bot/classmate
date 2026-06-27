@@ -7,7 +7,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 class ClassMateHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
-        if self.path not in {"/api/generate-game", "/api/generate-presentation", "/api/paraphrase", "/api/extract-timetable"}:
+        if self.path not in {"/api/generate-game", "/api/generate-presentation", "/api/paraphrase", "/api/extract-timetable", "/api/study-coach"}:
             self.send_error(404)
             return
 
@@ -18,6 +18,23 @@ class ClassMateHandler(SimpleHTTPRequestHandler):
             payload = json.loads(body)
         except json.JSONDecodeError:
             pass
+
+        if self.path == "/api/study-coach":
+            subject = str(payload.get("subject", "")).strip()[:80]
+            stuck_on = str(payload.get("stuckOn", "")).strip()[:600]
+            if not subject:
+                self.send_json({"error": "Tell ClassMate which subject you need help with."}, status=400)
+                return
+            if not stuck_on:
+                self.send_json({"error": "Tell ClassMate what you are stuck on."}, status=400)
+                return
+            try:
+                plan = ai_study_coach(subject, stuck_on)
+            except RuntimeError as error:
+                self.send_json({"error": str(error)}, status=503)
+                return
+            self.send_json({"subject": subject, "source": "openai", "coach": plan})
+            return
 
         if self.path == "/api/generate-presentation":
             topic = str(payload.get("topic", "")).strip()[:120] or "Untitled presentation"
@@ -73,7 +90,7 @@ class ClassMateHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
-from ai_helpers import ai_extract_timetable, ai_game_questions, ai_paraphrase, ai_presentation_plan
+from ai_helpers import ai_extract_timetable, ai_game_questions, ai_paraphrase, ai_presentation_plan, ai_study_coach
 
 
 if __name__ == "__main__":
